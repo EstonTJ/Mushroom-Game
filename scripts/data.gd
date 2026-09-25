@@ -5,9 +5,9 @@ extends Node
 
 const HUT_HP := 5
 const NIGHTS := 40
-## The first STARTING_MUSHROOMS are available from night 1; each one after that
-## unlocks UNLOCK_EVERY nights later (night 4, 7, 10, ... 37 for all 15).
-const STARTING_MUSHROOMS := 3
+## When mushrooms unlock, in ingredient_order: three on night 1, one more on
+## night 2 and night 3, then one every UNLOCK_EVERY nights (6, 9, ... 33).
+const EARLY_UNLOCKS := [1, 1, 1, 2, 3]
 const UNLOCK_EVERY := 3
 
 var moss := Color("465a4b")
@@ -171,9 +171,9 @@ func recipe_for(a: String, b: String) -> String:
 ## The night a mushroom becomes available.
 func unlock_night(id: String) -> int:
 	var i := ingredient_order.find(id)
-	if i < STARTING_MUSHROOMS:
-		return 1
-	return 1 + UNLOCK_EVERY * (i - STARTING_MUSHROOMS + 1)
+	if i < EARLY_UNLOCKS.size():
+		return EARLY_UNLOCKS[i]
+	return EARLY_UNLOCKS[-1] + UNLOCK_EVERY * (i - EARLY_UNLOCKS.size() + 1)
 
 
 func is_unlocked(id: String, night: int = -1) -> bool:

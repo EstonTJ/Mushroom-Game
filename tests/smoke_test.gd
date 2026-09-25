@@ -43,11 +43,14 @@ func night_map(day: int) -> Node:
 
 func _ready() -> void:
 	# --- Mushroom unlock schedule --------------------------------------------
-	check(Data.unlocked_mushrooms(1).size() == 3 and Data.unlocked_mushrooms(37).size() == 15,
-		"3 mushrooms on night 1, all 15 by night 37")
-	check(Data.unlock_night("ghost_fungus") == 4 and Data.unlock_night("bleeding_tooth") == 37,
-		"a new mushroom every 3 nights (Ghost Fungus night 4, Bleeding Tooth night 37)")
-	check(Data.potion_night("ward") == 4 and Data.potion_night("roar") == 34 and Data.potion_night("spore") == 1,
+	var counts := []
+	for n in [1, 2, 3, 5, 6, 9, 32, 33]:
+		counts.append(Data.unlocked_mushrooms(n).size())
+	check(counts == [3, 4, 5, 5, 6, 7, 14, 15], "unlocks: 3 on night 1, 4 on night 2, 5 on night 3, then +1 every 3 nights (got %s)" % str(counts))
+	check(Data.unlock_night("ghost_fungus") == 2 and Data.unlock_night("shaggy_ink_cap") == 3
+		and Data.unlock_night("scarlet_elf_cup") == 6 and Data.unlock_night("bleeding_tooth") == 33,
+		"Ghost Fungus night 2, Ink Cap night 3, Elf Cup night 6, Bleeding Tooth night 33")
+	check(Data.potion_night("ward") == 2 and Data.potion_night("roar") == 30 and Data.potion_night("spore") == 1,
 		"potions become brewable when their mushrooms unlock")
 	var every_pair_unique := true
 	var seen := {}

@@ -97,10 +97,10 @@ func _ready() -> void:
 		await frames(3)
 		await shot("6_hut_%d" % b)
 
-	# Late game forest (night 37): all 15 mushrooms in the basket, a new-mushroom banner.
+	# Late game forest (night 33): all 15 mushrooms in the basket, a new-mushroom banner.
 	main.queue_free()
 	await frames(2)
-	Data.day = 37
+	Data.day = 33
 	var late = Forage.new()
 	add_child(late)
 	late.items.append({"id": "ghost_fungus", "pos": Vector2(470, 640), "age": 0.5, "life": 3.0, "ph": 0.0})
