@@ -298,14 +298,30 @@ func reset_game() -> void:
 		bottles[key] = 0
 
 
-const SAVE_PATH := "user://save.json"
 const SAVE_VERSION := 1
+## The dev build (served from .../dev/, or run with "-- --dev") keeps its own
+## save and crash notes, so testing never touches the live game's progress.
+var dev := _is_dev()
+var SAVE_PATH := "user://save_dev.json" if dev else "user://save.json"
 ## In a browser the save is also kept in localStorage, which is written at
 ## once; Godot's own user:// storage (IndexedDB) is synced a moment later and
 ## can miss a save if the page is killed right after it.
-const WEB_SAVE_KEY := "mushroom_moon_save"
-const WEB_DIAG_KEY := "mushroom_moon_diag"
-const WEB_EVENT_KEY := "mushroom_moon_event"
+var WEB_SAVE_KEY := "mushroom_moon_save" + ("_dev" if dev else "")
+var WEB_DIAG_KEY := "mushroom_moon_diag" + ("_dev" if dev else "")
+var WEB_EVENT_KEY := "mushroom_moon_event" + ("_dev" if dev else "")
+
+
+func _is_dev() -> bool:
+	if OS.get_cmdline_user_args().has("--dev"):
+		return true
+	if OS.has_feature("web"):
+		return str(JavaScriptBridge.eval("location.pathname")).contains("/dev/")
+	return false
+
+
+## "0.19", or "0.19 DEV" on the dev build.
+func version_label() -> String:
+	return VERSION + (" DEV" if dev else "")
 
 ## Which screen the last save was made on ("forage", "brew" or "fortify"),
 ## so a reload resumes there.

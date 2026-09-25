@@ -246,4 +246,7 @@ func _draw() -> void:
 	if note != "":
 		draw_string_outline(font, Vector2(20, 1236), note, HORIZONTAL_ALIGNMENT_LEFT, 560, 16, 5, Color(0, 0, 0, 0.7))
 		draw_string(font, Vector2(20, 1236), note, HORIZONTAL_ALIGNMENT_LEFT, 560, 16, Color("ffb08a"))
-	draw_string(font, Vector2(500, 1262), "Version " + Data.VERSION, HORIZONTAL_ALIGNMENT_RIGHT, 200, 16, Color(1, 1, 1, 0.5))
+	if Data.dev:
+		_frame(Rect2(20, 20, 150, 50), Color("c0392b"), Color("3a0e0a"), Color(1, 0.7, 0.6, 0.35), Color(0, 0, 0, 0.2), 6.0)
+		draw_string(font, Vector2(20, 55), "DEV BUILD", HORIZONTAL_ALIGNMENT_CENTER, 150, 22, Color.WHITE)
+	draw_string(font, Vector2(500, 1262), "Version " + Data.version_label(), HORIZONTAL_ALIGNMENT_RIGHT, 200, 16, Color(1, 1, 1, 0.5))

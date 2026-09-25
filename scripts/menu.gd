@@ -164,7 +164,7 @@ func _draw_main(font: Font, rid: RID) -> void:
 	draw_string(font, Vector2(310, 1020), str(Data.coins), HORIZONTAL_ALIGNMENT_LEFT, -1, 24, Data.ink)
 	Art.bone(self, Vector2(410, 1010), 36)
 	draw_string(font, Vector2(436, 1020), str(Data.bones), HORIZONTAL_ALIGNMENT_LEFT, -1, 24, Data.ink)
-	draw_string(font, Vector2(0, 1210), "Version " + Data.VERSION, HORIZONTAL_ALIGNMENT_CENTER, 720, 16, Color("8a7a60"))
+	draw_string(font, Vector2(0, 1210), "Version " + Data.version_label(), HORIZONTAL_ALIGNMENT_CENTER, 720, 16, Color("8a7a60"))
 
 
 func _draw_levels(font: Font, rid: RID) -> void:

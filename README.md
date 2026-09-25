@@ -67,11 +67,23 @@ Godot --path . --quit-after 2000 res://tests/screenshots.tscn -- /path/to/folder
   $99/year developer account to share or publish.
 - **Quickest for playtesting (web):** the web build lives in `docs/`, ready
   for GitHub Pages (Settings > Pages > branch `main`, folder `/docs`). Pages
-  on a free account needs the repository to be public. To rebuild it:
+  on a free account needs the repository to be public.
 
-  ```
-  Godot --headless --path . --export-release "Web" docs/index.html
-  ```
+  There are two web versions:
+
+  | | Address | Folder |
+  |---|---|---|
+  | **Live** (for players) | https://estontj.github.io/Mushroom-Game/ | `docs/` |
+  | **Dev** (for testing) | https://estontj.github.io/Mushroom-Game/dev/ | `docs/dev/` |
+
+  The dev version shows a red DEV BUILD badge and "DEV" after the version
+  number, and keeps its own save, so testing never touches live progress.
+  (Run the game with `-- --dev` to get the dev save on a computer too.)
+
+  1. Build new work into dev, commit and push, then try it on your phone:
+     `tools/build_dev.sh`
+  2. When it's good, copy that exact build to live, commit and push:
+     `tools/promote.sh`
 
   The "Web" preset uses the single-threaded template, which runs on any
   static host and in iPhone Safari without special server headers.
