@@ -194,6 +194,10 @@ func _on_press(p: Vector2) -> void:
 	if PAGE_NEXT.has_point(p):
 		book_page = posmod(book_page + 1, _page_count())
 		return
+	if has_batcher() and batch_rect().has_point(p):
+		var more := p.x > batch_rect().get_center().x
+		Data.batch = clampi(Data.batch + (1 if more else -1), 1, Data.MAX_BATCH)
+		return
 	if has_auto() and auto_switch_rect().has_point(p):
 		Data.auto_bone = not Data.auto_bone
 		_auto_bone()
@@ -215,6 +219,29 @@ func _on_press(p: Vector2) -> void:
 
 func has_mortar() -> bool:
 	return Data.upgrades.has("bone_mortar")
+
+
+func has_batcher() -> bool:
+	return Data.upgrades.has("batch_brewer")
+
+
+## The batch dial: tap the left half for fewer, the right half for more.
+func batch_rect() -> Rect2:
+	return Rect2(544, 866, 160, 52)
+
+
+## How many potions the current pot would make: the dial, limited by how many
+## more of each mushroom are on the shelf (a pair of the same mushroom needs two).
+func batch_possible() -> int:
+	if not has_batcher():
+		return 1
+	var extra := Data.MAX_BATCH - 1
+	if pot.size() == 2:
+		if pot[0] == pot[1]:
+			extra = int(Data.inventory[pot[0]] / 2)
+		else:
+			extra = mini(Data.inventory[pot[0]], Data.inventory[pot[1]])
+	return clampi(1 + extra, 1, Data.batch)
 
 
 func has_auto() -> bool:
@@ -305,6 +332,11 @@ func _finish_brew() -> void:
 	var id: String = Data.recipe_for(pot[0], pot[1])
 	var flawless := perfect_pops == BUBBLES
 	var empowered := pot_bone
+	# A batch uses one more of each mushroom per extra potion (taken now).
+	var count := batch_possible()
+	for i in count - 1:
+		Data.inventory[pot[0]] -= 1
+		Data.inventory[pot[1]] -= 1
 	pot.clear()
 	pot_bone = false
 	_reset_bubbles()
@@ -313,22 +345,33 @@ func _finish_brew() -> void:
 		for i in 12:
 			_emit(SURFACE + Vector2(randf_range(-110, 110), randf_range(-15, 15)),
 				Vector2(randf_range(-25, 25), randf_range(-70, -30)), 1.6, 16.0, Color(0.35, 0.4, 0.3, 0.55), "smoke")
-		_popup("Murky sludge... try another mix", Color("b8c4a0"))
+		_popup("Murky sludge... try another mix" if count == 1 else "A whole batch of sludge!", Color("b8c4a0"))
 		return
 	var key := id + ("+" if empowered else "")
 	var info: Dictionary = Data.potion_stats(key)
 	var made := 2 if flawless else 1
-	Data.bottles[key] += made
-	_burst(SURFACE, info["color"], 30, 260.0)
-	for k in made:
-		flyers.append({"id": id, "t": -0.18 * k})
+	# Each extra potion in the batch takes another bone while they last.
+	var plus_count := 0
+	if empowered:
+		plus_count = mini(count, 1 + Data.bones)
+		Data.bones -= plus_count - 1
+	Data.bottles[id + "+"] += plus_count * made
+	Data.bottles[id] += (count - plus_count) * made
+	_burst(SURFACE, info["color"], 30 + 10 * count, 260.0)
+	for k in mini(count * made, 6):
+		flyers.append({"id": id, "t": -0.15 * k})
 	book_page = floori(float(Data.potion_order.find(id)) / PER_PAGE)
 	var what: String = ("Perfect brew! +2 %s" % info["name"]) if flawless else ("+1 %s" % info["name"])
 	if empowered:
 		what = ("Perfect! +2 Empowered %s" if flawless else "+1 Empowered %s") % Data.potions[id]["name"]
+	if count > 1:
+		what = "Batch of %d! +%d %s%s" % [count, count * made, Data.potions[id]["name"],
+			(" (%d empowered)" % (plus_count * made)) if plus_count > 0 else ""]
 	if not Data.discovered.has(id):
 		Data.discovered[id] = true
 		what = ("Perfect! New recipe: %s x2" if flawless else "New recipe: %s!") % info["name"]
+		if count > 1:
+			what = "New recipe: %s! Batch +%d" % [info["name"], count * made]
 	_popup(what, info["color"].lightened(0.25))
 
 
@@ -783,6 +826,16 @@ func _paint_light_over(ci: CanvasItem) -> void:
 func _paint_ui(ci: CanvasItem) -> void:
 	var rid := ci.get_canvas_item()
 	var font := ThemeDB.fallback_font
+	if has_batcher():
+		var r := batch_rect()
+		sign_box.draw(rid, r)
+		ci.draw_string(font, r.position + Vector2(10, 36), "-", HORIZONTAL_ALIGNMENT_LEFT, -1, 30, Data.parchment)
+		ci.draw_string(font, r.position + Vector2(r.size.x - 26, 36), "+", HORIZONTAL_ALIGNMENT_LEFT, -1, 30, Data.parchment)
+		var label := "Batch x%d" % Data.batch
+		var possible := batch_possible()
+		ci.draw_string(font, r.position + Vector2(0, 26), label, HORIZONTAL_ALIGNMENT_CENTER, r.size.x, 19, Data.parchment)
+		if pot.size() == 2 and possible < Data.batch:
+			ci.draw_string(font, r.position + Vector2(0, 46), "max %d" % possible, HORIZONTAL_ALIGNMENT_CENTER, r.size.x, 14, Color("ffb08a"))
 
 	var tip := "Drag an ingredient into the cauldron."
 	if pot.size() == 1:

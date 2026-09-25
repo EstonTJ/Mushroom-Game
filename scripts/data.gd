@@ -5,7 +5,7 @@ extends Node
 
 ## Shown on the title screen and in the menu, so players can tell whether
 ## their browser has the latest update. Bump it with each release.
-const VERSION := "0.15"
+const VERSION := "0.16"
 const HUT_HP := 5
 const NIGHTS := 40
 ## When mushrooms unlock, in ingredient_order: three on night 1, one more on
@@ -247,8 +247,12 @@ var shop_items := {
 		"desc": "Grind monster bones into your brews. Adds a bone bowl to the cauldron: drop a bone in with two mushrooms to brew an Empowered potion (bigger, longer, stronger)."},
 	"bone_appetit": {"name": "Bone Appétit", "price": 60, "requires": "bone_mortar",
 		"desc": "Never forget a bone again. Drops a monster bone into every brew by itself, as long as you have one. Switch it off at the bone bowl to save bones."},
+	"batch_brewer": {"name": "Loader of Mass Production", "price": 100,
+		"desc": "Brew up to 5 potions at once. Set the batch dial by the cauldron: each potion in the batch uses one of each mushroom (and a bone, if one's in)."},
 }
-var shop_order := ["bone_mortar", "bone_appetit"]
+## The most potions one batch can make (with the Batch Brewer).
+const MAX_BATCH := 5
+var shop_order := ["bone_mortar", "bone_appetit", "batch_brewer"]
 
 ## How much stronger an Empowered potion (one brewed with a monster bone) is.
 const EMPOWER := {"radius": 1.3, "duration": 1.4, "dps": 1.5, "burst": 1.5, "ward": 2, "heal": 1}
@@ -261,6 +265,8 @@ var bones := 0
 var upgrades := {}
 ## Whether the Bone Appétit adds bones by itself (switch on the bone bowl).
 var auto_bone := true
+## Batch size chosen on the Batch Brewer's dial (1 = no batching).
+var batch := 1
 var _empowered := {}
 var inventory := {}
 var bottles := {}
@@ -283,6 +289,7 @@ func reset_game() -> void:
 	bones = 0
 	upgrades.clear()
 	auto_bone = true
+	batch = 1
 	for id in ingredient_order:
 		inventory[id] = 0
 	for key in bottle_keys():
@@ -313,7 +320,7 @@ func _web() -> bool:
 func save_game(phase: String = "forage") -> void:
 	var text := JSON.stringify({"version": SAVE_VERSION, "day": day, "phase": phase, "inventory": inventory,
 		"bottles": bottles, "discovered": discovered, "seen_creatures": seen_creatures, "unlock_seen": unlock_seen,
-		"coins": coins, "bones": bones, "upgrades": upgrades, "auto_bone": auto_bone, "best_day": maxi(best_day, day), "snapshot": _snapshot})
+		"coins": coins, "bones": bones, "upgrades": upgrades, "auto_bone": auto_bone, "batch": batch, "best_day": maxi(best_day, day), "snapshot": _snapshot})
 	var f := FileAccess.open(SAVE_PATH, FileAccess.WRITE)
 	if f != null:
 		f.store_string(text)
@@ -354,6 +361,7 @@ func load_game() -> bool:
 		bottles[key] = int(data.get("bottles", {}).get(key, 0))
 	coins = int(data.get("coins", 0))
 	auto_bone = bool(data.get("auto_bone", true))
+	batch = clampi(int(data.get("batch", 1)), 1, MAX_BATCH)
 	bones = int(data.get("bones", 0))
 	for u in data.get("upgrades", {}):
 		if shop_items.has(u):

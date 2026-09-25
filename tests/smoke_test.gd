@@ -260,6 +260,47 @@ func _ready() -> void:
 		Data.bones = 0
 		brew_pair(lab, "puffball", "fly_agaric", "early")
 		check(Data.bones == 0 and Data.bottles["spore"] == plain_before + 2, "with no bones left it brews a normal potion")
+
+		# Loader of Mass Production: brew up to 5 at once.
+		Data.coins = 100
+		check(Data.buy("batch_brewer") and Data.coins == 0, "the Loader of Mass Production costs 100 coins")
+		Data.auto_bone = false
+		Data.batch = 1
+		for k in 4:
+			lab._on_press(lab.batch_rect().position + Vector2(lab.batch_rect().size.x - 10, 20))
+		check(Data.batch == 5, "the batch dial goes up to 5")
+		lab._on_press(lab.batch_rect().position + Vector2(10, 20))
+		lab._on_press(lab.batch_rect().position + Vector2(10, 20))
+		check(Data.batch == 3, "and back down")
+		Data.inventory["puffball"] = 5
+		Data.inventory["fly_agaric"] = 5
+		var sp: int = Data.bottles["spore"]
+		brew_pair(lab, "puffball", "fly_agaric", "early")
+		check(Data.bottles["spore"] == sp + 3 and Data.inventory["puffball"] == 2 and Data.inventory["fly_agaric"] == 2,
+			"a batch of 3 makes 3 potions from 3 of each mushroom")
+		Data.inventory["puffball"] = 5
+		Data.inventory["fly_agaric"] = 5
+		sp = Data.bottles["spore"]
+		brew_pair(lab, "puffball", "fly_agaric", "perfect")
+		check(Data.bottles["spore"] == sp + 6, "a Perfect batch of 3 makes 6")
+		Data.batch = 5
+		Data.inventory["puffball"] = 2
+		Data.inventory["fly_agaric"] = 4
+		sp = Data.bottles["spore"]
+		brew_pair(lab, "puffball", "fly_agaric", "early")
+		check(Data.bottles["spore"] == sp + 2 and Data.inventory["puffball"] == 0, "a batch shrinks to the mushrooms on hand")
+		Data.batch = 4
+		Data.inventory["puffball"] = 4
+		Data.inventory["fly_agaric"] = 4
+		Data.bones = 2
+		var sp_plus: int = Data.bottles["spore+"]
+		sp = Data.bottles["spore"]
+		lab._on_press(lab.BONE_BOWL)
+		lab._on_release(lab.POT)
+		brew_pair(lab, "puffball", "fly_agaric", "early")
+		check(Data.bottles["spore+"] == sp_plus + 2 and Data.bottles["spore"] == sp + 2 and Data.bones == 0,
+			"with 2 bones, a batch of 4 makes 2 Empowered and 2 plain")
+		Data.batch = 1
 		Data.day = 4
 		main._begin_day()
 		await frames(1)

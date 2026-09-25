@@ -6,8 +6,8 @@ extends Node2D
 const Art = preload("res://scripts/art.gd")
 
 const CARD_W := 640.0
-const CARD_H := 252.0
-const FIRST_CARD_Y := 560.0
+const CARD_H := 196.0
+const FIRST_CARD_Y := 540.0
 
 var earned_coins := 0
 var earned_bones := 0
@@ -37,12 +37,12 @@ func _box(bg: Color, border: Color, radius: int, border_w: int) -> StyleBoxFlat:
 
 
 func card_rect(i: int) -> Rect2:
-	return Rect2(40, FIRST_CARD_Y + i * (CARD_H + 10), CARD_W, CARD_H)
+	return Rect2(40, FIRST_CARD_Y + i * (CARD_H + 8), CARD_W, CARD_H)
 
 
 func buy_rect(i: int) -> Rect2:
 	var c := card_rect(i)
-	return Rect2(c.end.x - 196, c.end.y - 66, 172, 54)
+	return Rect2(c.end.x - 186, c.position.y + 16, 166, 50)
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -95,7 +95,7 @@ func _draw() -> void:
 	_draw_stall()
 
 	# Earnings and purse.
-	var purse := Rect2(40, 470, 640, 70)
+	var purse := Rect2(40, 462, 640, 66)
 	card_box.draw(rid, purse)
 	Art.coin(self, purse.position + Vector2(44, 35), 34)
 	draw_string(font, purse.position + Vector2(70, 44), str(Data.coins), HORIZONTAL_ALIGNMENT_LEFT, -1, 28, Data.ink)
@@ -108,17 +108,17 @@ func _draw() -> void:
 		_draw_item(font, rid, i, Data.shop_order[i])
 
 	var soon := card_rect(Data.shop_order.size())
-	soon.size.y = 110
+	soon.size.y = 76
 	soon_box.draw(rid, soon)
-	draw_string(font, soon.position + Vector2(0, 50), "More lab upgrades coming soon", HORIZONTAL_ALIGNMENT_CENTER, soon.size.x, 24,
+	draw_string(font, soon.position + Vector2(0, 34), "More lab upgrades coming soon", HORIZONTAL_ALIGNMENT_CENTER, soon.size.x, 22,
 		Color(0.4, 0.3, 0.22, 0.8))
-	draw_string(font, soon.position + Vector2(0, 82), "Keep your coins and bones: the merchant brings new wares.", HORIZONTAL_ALIGNMENT_CENTER,
-		soon.size.x, 16, Color(0.4, 0.3, 0.22, 0.7))
+	draw_string(font, soon.position + Vector2(0, 60), "Keep your coins and bones: the merchant brings new wares.", HORIZONTAL_ALIGNMENT_CENTER,
+		soon.size.x, 15, Color(0.4, 0.3, 0.22, 0.7))
 
 	if message != "" and message_t < 3.0:
 		var a := clampf(3.0 - message_t, 0.0, 1.0)
-		draw_string_outline(font, Vector2(0, 1230), message, HORIZONTAL_ALIGNMENT_CENTER, 720, 26, 7, Color(0, 0, 0, 0.6 * a))
-		draw_string(font, Vector2(0, 1230), message, HORIZONTAL_ALIGNMENT_CENTER, 720, 26, Art.fade(Color("ffd35a"), a))
+		draw_string_outline(font, Vector2(0, 1266), message, HORIZONTAL_ALIGNMENT_CENTER, 720, 22, 7, Color(0, 0, 0, 0.6 * a))
+		draw_string(font, Vector2(0, 1266), message, HORIZONTAL_ALIGNMENT_CENTER, 720, 22, Art.fade(Color("ffd35a"), a))
 
 	for p in particles:
 		var f: float = p["life"] / p["max"]
@@ -130,15 +130,22 @@ func _draw_item(font: Font, rid: RID, i: int, item: String) -> void:
 	var c := card_rect(i)
 	card_box.draw(rid, c)
 	var owned: bool = Data.upgrades.has(item)
-	var icon := c.position + Vector2(96, 112)
+	var icon := c.position + Vector2(96, 104)
 	Art.glow(self, icon, 90, Color(1.0, 0.85, 0.5, 0.35))
 	if item == "bone_appetit":
 		_draw_bone_appetit(icon)
+	elif item == "batch_brewer":
+		_draw_batch_brewer(icon)
 	else:
 		_draw_mortar(icon, 1.0)
-	draw_string(font, c.position + Vector2(190, 52), info["name"], HORIZONTAL_ALIGNMENT_LEFT, -1, 32, Data.ink)
-	draw_string(font, c.position + Vector2(190, 82), "Lab upgrade", HORIZONTAL_ALIGNMENT_LEFT, -1, 18, Color("8a6242"))
-	draw_multiline_string(font, c.position + Vector2(190, 114), info["desc"], HORIZONTAL_ALIGNMENT_LEFT, c.size.x - 214, 17, 4,
+	# Long names shrink to fit beside the Buy button.
+	var title_w := buy_rect(i).position.x - c.position.x - 200.0
+	var size := 30
+	while size > 18 and font.get_string_size(info["name"], HORIZONTAL_ALIGNMENT_LEFT, -1, size).x > title_w:
+		size -= 1
+	draw_string(font, c.position + Vector2(190, 48), info["name"], HORIZONTAL_ALIGNMENT_LEFT, -1, size, Data.ink)
+	draw_string(font, c.position + Vector2(190, 74), "Lab upgrade", HORIZONTAL_ALIGNMENT_LEFT, -1, 17, Color("8a6242"))
+	draw_multiline_string(font, c.position + Vector2(190, 102), info["desc"], HORIZONTAL_ALIGNMENT_LEFT, c.size.x - 210, 16, 4,
 		Art.fade(Data.ink, 0.85))
 	var b := buy_rect(i)
 	if not owned and not Data.can_buy_after(item):
@@ -153,6 +160,17 @@ func _draw_item(font: Font, rid: RID, i: int, item: String) -> void:
 		buy_box.draw(rid, b)
 		Art.coin(self, b.position + Vector2(34, 29), 30)
 		draw_string(font, b.position + Vector2(56, 39), "%d  Buy" % int(info["price"]), HORIZONTAL_ALIGNMENT_LEFT, -1, 24, Color.WHITE)
+
+
+## A big cauldron with five bottles lined up in front of it.
+func _draw_batch_brewer(at: Vector2) -> void:
+	Art.shadow(self, at + Vector2(0, 50), 70, 10)
+	draw_circle(at + Vector2(0, -6), 44, Color("2f2b2a"))
+	draw_colored_polygon(Art.ellipse(at + Vector2(0, -40), 50, 14, 20), Color("3d3837"))
+	draw_colored_polygon(Art.ellipse(at + Vector2(0, -40), 42, 10, 20), Color("7fd67a").lightened(0.1 * sin(t * 3.0)))
+	for k in 5:
+		var bp := at + Vector2(-56 + k * 28, 40 + absf(sin(t * 3.0 + k)) * -4.0)
+		Art.bottle(self, bp, 30, [Color("b58fd6"), Color("e0a441"), Color("e8703f"), Color("9ff0f0"), Color("a8e0ff")][k])
 
 
 ## A little bone-loading contraption: a gear, a hopper of bones and a chute.
