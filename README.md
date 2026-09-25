@@ -22,7 +22,7 @@ A mouse click stands in for a finger tap.
 | Phase | What you do |
 |---|---|
 | Forage (20 s) | Tap ingredients before they fade. One rare Moonglow shows up per walk and fades fast. |
-| Brew | Drag two ingredients into the cauldron, then circle your finger around it 3 times. Known pairs make a bottle; anything else is sludge. |
+| Brew | Drag two mushrooms into the cauldron. Three bubbles rise one at a time: tap each as it fills its ring (the ring turns gold). Three Perfect pops make 2 bottles; otherwise 1. Known pairs make a bottle; anything else is sludge. |
 | Fortify | Tap a bottle, then a glowing spot on a path. It bursts when a creature gets close. Moon Ward goes on the hut. Tap a placed bottle to take it back. |
 | Night | Creatures walk both paths. Tap a bottle, then a glowing spot to place it as a trap (spots free up again once their trap bursts), or tap anywhere else to throw it. |
 

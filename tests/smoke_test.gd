@@ -21,14 +21,20 @@ func frames(n: int) -> void:
 		await get_tree().process_frame
 
 
-func brew_pair(brew, a: String, b: String) -> void:
+## Drop two mushrooms in, then pop the three bubbles: "perfect" taps each as
+## it fills the ring, "early" taps each too soon, "none" lets them burst.
+func brew_pair(brew, a: String, b: String, how: String = "perfect") -> void:
 	for id in [a, b]:
 		brew._on_press(brew.slot_center(Data.ingredient_order.find(id)))
 		brew._on_release(brew.POT)
-	brew._on_press(brew.POT + Vector2(120, 0))
-	for k in 120:
-		brew._on_stir(brew.POT + Vector2(120, 0).rotated(k * 0.3))
-	brew._on_release(brew.POT)
+	for k in brew.BUBBLES:
+		brew._bubble_step(1.0)
+		if how == "none":
+			brew._bubble_step(2.0)
+			continue
+		brew.bubble["f"] = 0.85 if how == "perfect" else 0.3
+		brew._on_press(brew.POT)
+		brew._on_release(brew.POT)
 
 
 ## A night-map node for rule checks: night mode, nothing left to spawn.
@@ -96,13 +102,14 @@ func _ready() -> void:
 	for id in Data.ingredient_order:
 		Data.inventory[id] = 4
 	var brew = main.phase_node
-	brew_pair(brew, "puffball", "fly_agaric")
-	brew_pair(brew, "chanterelle", "puffball")
-	brew_pair(brew, "fly_agaric", "chanterelle")
-	brew_pair(brew, "puffball", "puffball")
+	brew_pair(brew, "puffball", "fly_agaric", "perfect")
+	check(Data.bottles["spore"] == 2 and Data.discovered.has("spore"), "three Perfect bubble pops make 2 bottles (Spore Cloud)")
+	brew_pair(brew, "chanterelle", "puffball", "early")
+	check(Data.bottles["syrup"] == 1 and brew.results.is_empty(), "early pops still brew 1 bottle (Sticky Syrup)")
+	brew_pair(brew, "fly_agaric", "chanterelle", "none")
+	check(Data.bottles["ember"] == 1 and Data.discovered.has("ember"), "bubbles left to burst still brew 1 bottle (Ember Burst)")
+	brew_pair(brew, "puffball", "puffball", "perfect")
 	await frames(2)
-	for id in ["spore", "syrup", "ember"]:
-		check(Data.bottles[id] == 1 and Data.discovered.has(id), "brewed and discovered " + id)
 	check(Data.inventory["puffball"] == 0, "sludge used up its mushrooms (puffball 4 -> 0)")
 	brew._on_press(brew.slot_center(Data.ingredient_order.find("ghost_fungus")))
 	check(brew.dragging == "", "a locked mushroom's jar can't be used")

@@ -1,5 +1,7 @@
 extends Node2D
-## Day phase 2: drag two ingredients into the cauldron, then stir in circles.
+## Day phase 2: drag two mushrooms into the cauldron, then pop the bubbles.
+## Three bubbles rise one at a time and grow toward a target ring; tap as one
+## fills the ring for a Perfect pop. Three Perfect pops make two bottles.
 ## A known pair makes a bottle (and discovers the recipe); anything else is sludge.
 ##
 ## Drawing is split into stacked layers like the night map: room -> light pools
@@ -9,7 +11,12 @@ extends Node2D
 const Art = preload("res://scripts/art.gd")
 
 const POT := Vector2(360, 700)
-const STIR_TURNS := 3.0
+const BUBBLES := 3
+const BUBBLE_TIME := 1.3
+## A tap counts as Perfect while the bubble is this far through its growth.
+const PERFECT_FROM := 0.72
+const PERFECT_TO := 1.0
+const BUBBLE_GAP := 0.45
 const SLOT_W := 90.0
 const SHELF_TOP := 128.0
 const ROW_H := 108.0
@@ -36,10 +43,14 @@ class Layer extends Node2D:
 
 var pot: Array[String] = []
 var dragging := ""
-var stirring := false
-var last_angle := -0.6
-var stir_total := 0.0
 var swirl := 0.0
+var bubble := {}
+var bubbles_done := 0
+var perfect_pops := 0
+var results := []
+var bubble_gap := 0.0
+var rings := []
+var marks := []
 var popups := []
 var particles := []
 var flyers := []
@@ -116,6 +127,13 @@ func _process(delta: float) -> void:
 	for k in cell_flash.keys():
 		cell_flash[k] = maxf(0.0, cell_flash[k] - delta)
 
+	_bubble_step(delta)
+	for r in rings:
+		r["t"] += delta
+	rings = rings.filter(func(r): return r["t"] < 0.5)
+	for m in marks:
+		m["t"] += delta
+	marks = marks.filter(func(m): return m["t"] < 0.9)
 	_update_particles(delta)
 	light_under.queue_redraw()
 	objects.queue_redraw()
@@ -128,7 +146,19 @@ func return_pot() -> void:
 	for id in pot:
 		Data.inventory[id] += 1
 	pot.clear()
-	stir_total = 0.0
+	_reset_bubbles()
+
+
+func _reset_bubbles() -> void:
+	bubble = {}
+	bubbles_done = 0
+	perfect_pops = 0
+	results = []
+	bubble_gap = BUBBLE_GAP
+
+
+func brewing() -> bool:
+	return pot.size() == 2
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -138,8 +168,6 @@ func _unhandled_input(event: InputEvent) -> void:
 			_on_press(p)
 		else:
 			_on_release(p)
-	elif event is InputEventMouseMotion and stirring:
-		_on_stir(p)
 
 
 func _on_press(p: Vector2) -> void:
@@ -159,9 +187,8 @@ func _on_press(p: Vector2) -> void:
 			if Data.is_unlocked(id) and Data.inventory[id] > 0 and pot.size() < 2:
 				dragging = id
 		return
-	if pot.size() == 2 and p.distance_to(POT) < 240.0:
-		stirring = true
-		last_angle = (p - POT).angle()
+	if brewing() and not bubble.is_empty() and p.y > SHELF_TOP + ROW_H * 2.0 and p.y < 930.0:
+		_pop_bubble(true)
 
 
 func _on_release(p: Vector2) -> void:
@@ -170,27 +197,62 @@ func _on_release(p: Vector2) -> void:
 			Data.inventory[dragging] -= 1
 			pot.append(dragging)
 			_splash(Data.ingredients[dragging]["color"])
+			if brewing():
+				_reset_bubbles()
 		dragging = ""
-	stirring = false
 
 
-func _on_stir(p: Vector2) -> void:
-	if not stirring or pot.size() < 2 or p.distance_to(POT) < 30.0:
+func _bubble_step(delta: float) -> void:
+	if not brewing():
 		return
-	var a := (p - POT).angle()
-	var d := wrapf(a - last_angle, -PI, PI)
-	last_angle = a
-	stir_total += absf(d)
-	swirl += d
-	if stir_total >= TAU * STIR_TURNS:
+	if bubble.is_empty():
+		bubble_gap -= delta
+		if bubble_gap <= 0.0:
+			bubble = {"f": 0.0, "pos": SURFACE + Vector2(randf_range(-80, 80), -6), "seed": randf() * TAU}
+	else:
+		bubble["f"] += delta / BUBBLE_TIME
+		if bubble["f"] >= 1.08:
+			_pop_bubble(false)
+
+
+func bubble_radius(f: float) -> float:
+	return 10.0 + 40.0 * clampf(f, 0.0, 1.0)
+
+
+func bubble_pos(b: Dictionary) -> Vector2:
+	var f: float = b["f"]
+	return b["pos"] + Vector2(sin(f * 6.0 + b["seed"]) * 5.0, -f * 70.0)
+
+
+## Pop the current bubble: Perfect if tapped while it fills the ring, Good if
+## tapped early, Missed if it burst on its own. The third pop finishes the brew.
+func _pop_bubble(tapped: bool) -> void:
+	var f: float = bubble["f"]
+	var at := bubble_pos(bubble)
+	var r := bubble_radius(f)
+	var perfect := tapped and f >= PERFECT_FROM and f <= PERFECT_TO + 0.08
+	var result := "perfect" if perfect else ("good" if tapped else "missed")
+	results.append(result)
+	if perfect:
+		perfect_pops += 1
+	var col := _liquid_color().lightened(0.35)
+	_burst(at, Color("ffd35a") if perfect else col, 18 if perfect else 10, 200.0 if perfect else 130.0)
+	rings.append({"pos": at, "r": r, "t": 0.0, "color": Color("ffd35a") if perfect else col})
+	var label: String = {"perfect": "Perfect!", "good": "Good", "missed": "Missed"}[result]
+	marks.append({"text": label, "pos": at + Vector2(0, -r - 10), "t": 0.0,
+		"color": Color("ffd35a") if perfect else (Data.parchment if tapped else Color(1, 1, 1, 0.6))})
+	bubble = {}
+	bubble_gap = BUBBLE_GAP
+	bubbles_done += 1
+	if bubbles_done >= BUBBLES:
 		_finish_brew()
 
 
 func _finish_brew() -> void:
-	stirring = false
 	var id: String = Data.recipe_for(pot[0], pot[1])
+	var flawless := perfect_pops == BUBBLES
 	pot.clear()
-	stir_total = 0.0
+	_reset_bubbles()
 	if id == "":
 		murk = 1.0
 		for i in 12:
@@ -199,15 +261,17 @@ func _finish_brew() -> void:
 		_popup("Murky sludge... try another mix", Color("b8c4a0"))
 		return
 	var info: Dictionary = Data.potions[id]
-	Data.bottles[id] += 1
+	var made := 2 if flawless else 1
+	Data.bottles[id] += made
 	_burst(SURFACE, info["color"], 30, 260.0)
-	flyers.append({"id": id, "t": 0.0})
+	for k in made:
+		flyers.append({"id": id, "t": -0.18 * k})
 	book_page = floori(float(Data.potion_order.find(id)) / PER_PAGE)
+	var what: String = ("Perfect brew! +2 %s" % info["name"]) if flawless else ("+1 %s" % info["name"])
 	if not Data.discovered.has(id):
 		Data.discovered[id] = true
-		_popup("New recipe: %s!" % info["name"], info["color"].lightened(0.25))
-	else:
-		_popup("+1 %s" % info["name"], info["color"].lightened(0.25))
+		what = ("Perfect! New recipe: %s x2" if flawless else "New recipe: %s!") % info["name"]
+	_popup(what, info["color"].lightened(0.25))
 
 
 func _popup(text: String, color: Color) -> void:
@@ -247,7 +311,7 @@ func _splash(color: Color) -> void:
 func _update_particles(delta: float) -> void:
 	steam_timer -= delta
 	if steam_timer <= 0.0:
-		steam_timer = 0.14 if stirring else 0.22
+		steam_timer = 0.14 if brewing() else 0.22
 		_emit(SURFACE + Vector2(randf_range(-120, 120), randf_range(-15, 10)), Vector2(randf_range(-6, 6), randf_range(-45, -25)),
 			2.2, 14.0, Color(1, 1, 1, 0.1).lerp(_liquid_color(), 0.3), "steam")
 	ember_timer -= delta
@@ -390,7 +454,7 @@ func _paint_light_under(ci: CanvasItem) -> void:
 	Art.glow(ci, FIRE + Vector2(0, -30), 340, Color(1.0, 0.55, 0.2, 0.26 * _flicker(9.0)))
 	Art.glow(ci, WINDOW, 120, Color(0.6, 0.7, 1.0, 0.12))
 	Art.glow(ci, CANDLE + Vector2(0, -26), 130, Art.fade(Data.lantern, 0.3 * _flicker(13.0)))
-	Art.glow(ci, SURFACE + Vector2(0, -40), 280, Art.fade(liquid, 0.14 + (0.08 if stirring else 0.0)))
+	Art.glow(ci, SURFACE + Vector2(0, -40), 280, Art.fade(liquid, 0.14 + (0.08 if brewing() else 0.0)))
 
 
 func _paint_objects(ci: CanvasItem) -> void:
@@ -538,7 +602,7 @@ func _paint_cauldron(ci: CanvasItem) -> void:
 			spiral.append(SURFACE + Vector2(cos(ang) * 150.0 * r, sin(ang) * 34.0 * r + 2.0))
 		ci.draw_polyline(spiral, Art.fade(liquid.lightened(0.35), 0.55), 3.0, true)
 	for k in 7:
-		var ph := fmod(t * (0.8 if not stirring else 1.6) + k * 0.143, 1.0)
+		var ph := fmod(t * (0.8 if not brewing() else 1.6) + k * 0.143, 1.0)
 		var bp := SURFACE + Vector2(sin(k * 12.9) * 110.0, sin(k * 7.3) * 20.0 + 2.0)
 		if ph < 0.8:
 			ci.draw_circle(bp, 3.0 + ph * 9.0, liquid.lightened(0.25))
@@ -551,37 +615,59 @@ func _paint_cauldron(ci: CanvasItem) -> void:
 		var bob := sin(t * 2.5 + k) * 4.0
 		Art.ingredient(ci, pot[k], SURFACE + Vector2(cos(ang) * 75.0, sin(ang) * 16.0 - 14.0 + bob), 62)
 
-	if pot.size() == 2:
-		var a := last_angle
-		var bowl := SURFACE + Vector2(cos(a) * 95.0, sin(a) * 22.0)
-		var handle_end := bowl + Vector2(cos(a) * 40.0 + 30.0, -200.0)
-		ci.draw_line(bowl, handle_end, Color("6a4a30"), 13.0, true)
-		ci.draw_line(bowl + Vector2(-3, 0), handle_end + Vector2(-3, 0), Color("b88a5c"), 4.0, true)
-		ci.draw_colored_polygon(Art.ellipse(bowl, 22, 10, 16), Color("7a5236"))
-
-		var progress := clampf(stir_total / (TAU * STIR_TURNS), 0.0, 1.0)
-		ci.draw_arc(POT, 215, 0, TAU, 72, Color(1, 1, 1, 0.1), 10.0, true)
-		if progress > 0.0:
-			ci.draw_arc(POT, 215, -PI / 2, -PI / 2 + TAU * progress, 72, Data.lantern, 10.0, true)
-		for k in 3:
+	if brewing():
+		_paint_bubble(ci)
+		for k in BUBBLES:
 			var pip := POT + Vector2.from_angle(-PI / 2 + (k - 1) * 0.2) * 243.0
-			var lit := progress * STIR_TURNS > k + 0.999
-			ci.draw_circle(pip, 9, Data.lantern if lit else Color(1, 1, 1, 0.15))
-			ci.draw_arc(pip, 9, 0, TAU, 16, Color(0, 0, 0, 0.5), 2.0, true)
+			var col := Color(1, 1, 1, 0.15)
+			if k < results.size():
+				col = {"perfect": Color("ffd35a"), "good": Color("c8b890"), "missed": Color(1, 1, 1, 0.3)}[results[k]]
+			ci.draw_circle(pip, 10, col)
+			ci.draw_arc(pip, 10, 0, TAU, 16, Color(0, 0, 0, 0.5), 2.0, true)
+			if k < results.size() and results[k] == "perfect":
+				Art.sparkle(ci, pip, 7.0, Color.WHITE)
+	for r in rings:
+		var rt: float = r["t"] / 0.5
+		ci.draw_arc(r["pos"], r["r"] * (1.0 + rt * 1.2), 0, TAU, 32, Art.fade(r["color"], 1.0 - rt), 4.0 * (1.0 - rt) + 1.0, true)
 
 	if dragging != "" and pot.size() < 2:
 		var rim := Art.ellipse(POT + Vector2(0, -110), 196, 62, 48)
 		Art.outline(ci, rim, Art.fade(Data.magic, 0.55 + 0.35 * sin(t * 6.0)), 4.0)
 
 
+## The rising bubble, its target ring (gold while a tap would be Perfect),
+## a glossy highlight and a faint reflection of the potion colour.
+func _paint_bubble(ci: CanvasItem) -> void:
+	if bubble.is_empty():
+		return
+	var f: float = bubble["f"]
+	var at := bubble_pos(bubble)
+	var r := bubble_radius(f)
+	var target := bubble_radius((PERFECT_FROM + PERFECT_TO) * 0.5)
+	var in_window := f >= PERFECT_FROM and f <= PERFECT_TO + 0.08
+	var ring_col := Color("ffd35a") if in_window else Color(1, 1, 1, 0.45)
+	for k in 16:
+		var a0 := TAU * k / 16.0 + t * 0.6
+		ci.draw_arc(at, target, a0, a0 + TAU / 32.0, 4, ring_col, 3.0 if in_window else 2.0, true)
+	var col := _liquid_color().lightened(0.25)
+	ci.draw_circle(at, r, Art.fade(col, 0.45))
+	ci.draw_circle(at + Vector2(r * 0.15, r * 0.2), r * 0.7, Art.fade(col.darkened(0.2), 0.25))
+	ci.draw_arc(at, r, 0, TAU, 40, Art.fade(col.lightened(0.5), 0.9), 2.5, true)
+	ci.draw_arc(at, r * 0.72, PI * 1.1, PI * 1.5, 10, Color(1, 1, 1, 0.85), maxf(2.0, r * 0.1), true)
+	ci.draw_circle(at + Vector2(r * 0.35, -r * 0.4), r * 0.08, Color(1, 1, 1, 0.8))
+	if f > 1.0:
+		ci.draw_arc(at, r, 0, TAU, 40, Color(1, 0.4, 0.3, 0.8), 2.0, true)
+
+
 func _paint_light_over(ci: CanvasItem) -> void:
 	var liquid := _liquid_color()
-	Art.glow(ci, SURFACE, 190, Art.fade(liquid, 0.3 + (0.15 if stirring else 0.0)))
+	Art.glow(ci, SURFACE, 190, Art.fade(liquid, 0.3 + (0.15 if brewing() else 0.0)))
 	Art.glow(ci, FIRE + Vector2(0, -25), 110, Color(1.0, 0.7, 0.3, 0.5 * _flicker(11.0)))
 	Art.glow(ci, CANDLE + Vector2(0, -12), 22, Color(1.0, 0.85, 0.5, 0.7 * _flicker(15.0)))
-	if pot.size() == 2 and stir_total > 0.0:
-		var progress := clampf(stir_total / (TAU * STIR_TURNS), 0.0, 1.0)
-		Art.glow(ci, POT + Vector2.from_angle(-PI / 2 + TAU * progress) * 215.0, 40, Art.fade(Data.lantern, 0.7))
+	if not bubble.is_empty():
+		var f: float = bubble["f"]
+		var in_window := f >= PERFECT_FROM and f <= PERFECT_TO + 0.08
+		Art.glow(ci, bubble_pos(bubble), bubble_radius(f) * 1.6, Art.fade(Color("ffd35a") if in_window else liquid.lightened(0.3), 0.35))
 	for p in particles:
 		var kind: String = p["kind"]
 		if kind == "spark" or kind == "ember":
@@ -597,7 +683,7 @@ func _paint_ui(ci: CanvasItem) -> void:
 	if pot.size() == 1:
 		tip = "Add one more ingredient."
 	elif pot.size() == 2:
-		tip = "Stir! Circle your finger around the pot."
+		tip = "Tap each bubble when it fills the ring!"
 	var tip_w := font.get_string_size(tip, HORIZONTAL_ALIGNMENT_LEFT, -1, 21).x
 	tip_box.draw(rid, Rect2(10, 932, tip_w + 24, 40))
 	ci.draw_string(font, Vector2(22, 959), tip, HORIZONTAL_ALIGNMENT_LEFT, -1, 21, Data.parchment)
@@ -644,7 +730,15 @@ func _paint_ui(ci: CanvasItem) -> void:
 		ci.draw_string_outline(font, at, p["text"], HORIZONTAL_ALIGNMENT_CENTER, 720, 34, 8, Color(0, 0, 0, 0.6 * a))
 		ci.draw_string(font, at, p["text"], HORIZONTAL_ALIGNMENT_CENTER, 720, 34, Art.fade(p["color"], a))
 
+	for m in marks:
+		var mt: float = m["t"]
+		var at: Vector2 = m["pos"] + Vector2(-80, -mt * 40)
+		ci.draw_string_outline(font, at, m["text"], HORIZONTAL_ALIGNMENT_CENTER, 160, 26, 6, Color(0, 0, 0, 0.6 * (1.0 - mt)))
+		ci.draw_string(font, at, m["text"], HORIZONTAL_ALIGNMENT_CENTER, 160, 26, Art.fade(m["color"], 1.0 - mt))
+
 	for f in flyers:
+		if f["t"] < 0.0:
+			continue
 		var pos := _flyer_pos(f)
 		var col: Color = Data.potions[f["id"]]["color"]
 		var k: float = f["t"] / FLY_TIME

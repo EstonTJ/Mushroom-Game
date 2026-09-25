@@ -49,9 +49,15 @@ func _ready() -> void:
 	for id in ["scarlet_elf_cup", "puffball"]:
 		brew._on_press(brew.slot_center(Data.ingredient_order.find(id)))
 		brew._on_release(brew.POT)
-	brew._on_press(brew.POT + Vector2(120, 0))
-	for k in 30:
-		brew._on_stir(brew.POT + Vector2(120, 0).rotated(k * 0.3))
+	# Two bubbles popped (one Perfect), the third swelling into its ring.
+	brew._bubble_step(1.0)
+	brew.bubble["f"] = 0.85
+	brew._pop_bubble(true)
+	brew._bubble_step(1.0)
+	brew.bubble["f"] = 0.4
+	brew._pop_bubble(true)
+	brew._bubble_step(1.0)
+	brew.bubble["f"] = 0.8
 	brew.book_page = 1
 	await frames(5)
 	await shot("2_brew")
