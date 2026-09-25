@@ -1170,3 +1170,38 @@ static func coin(ci: CanvasItem, pos: Vector2, s: float, a: float = 1.0) -> void
 	ci.draw_circle(pos, s * 0.42, fade(Color("f5c04a"), a))
 	ci.draw_arc(pos, s * 0.3, 0, TAU, 20, fade(Color("d8962a"), a), maxf(1.0, s * 0.06), true)
 	ci.draw_arc(pos, s * 0.36, PI * 1.1, PI * 1.5, 8, fade(Color.WHITE, 0.8 * a), maxf(1.0, s * 0.07), true)
+
+
+## Truffle pig: pink, round, big snout, floppy ears, curly tail, trotting feet.
+## face: 1 faces right, -1 faces left. t drives the trot.
+static func pig(ci: CanvasItem, pos: Vector2, s: float, face: float = 1.0, t: float = 0.0, sniff: bool = false) -> void:
+	var pink := Color("f2a8b8")
+	var dark := Color("c87890")
+	var ink := fade(INK, 0.7)
+	var lw := maxf(1.5, s * 0.04)
+	var step := sin(t * 16.0)
+	shadow(ci, pos + Vector2(0, s * 0.42), s * 0.5, s * 0.1)
+	for k in 4:
+		var lx := face * s * (-0.3 + k * 0.2)
+		var lift := maxf(0.0, step * (1.0 if k % 2 == 0 else -1.0)) * s * 0.06
+		ci.draw_rect(Rect2(pos.x + lx - s * 0.05, pos.y + s * 0.18 - lift, s * 0.1, s * 0.22), dark)
+		ci.draw_rect(Rect2(pos.x + lx - s * 0.05, pos.y + s * 0.36 - lift, s * 0.1, s * 0.05), Color("5a3a3a"))
+	var tail := pos + Vector2(-face * s * 0.48, -s * 0.08)
+	ci.draw_arc(tail + Vector2(-face * s * 0.06, 0), s * 0.06, 0, TAU * 0.8, 10, dark, lw * 1.3, true)
+	var body := ellipse(pos, s * 0.48, s * 0.32, 24)
+	ci.draw_colored_polygon(body, pink)
+	ci.draw_colored_polygon(ellipse(pos + Vector2(-face * s * 0.1, s * 0.1), s * 0.3, s * 0.14, 16), Color("f8c4d0"))
+	outline(ci, body, ink, lw)
+	var head := pos + Vector2(face * s * 0.4, -s * 0.1 + (s * 0.05 if sniff else 0.0))
+	ci.draw_circle(head, s * 0.24, pink)
+	ci.draw_arc(head, s * 0.24, 0, TAU, 20, ink, lw, true)
+	for e in [-1.0, 1.0]:
+		var ear := PackedVector2Array([head + Vector2(e * s * 0.1 - face * s * 0.02, -s * 0.18), head + Vector2(e * s * 0.2, -s * 0.36),
+			head + Vector2(e * s * 0.02 + face * s * 0.06, -s * 0.22)])
+		ci.draw_colored_polygon(ear, dark)
+	var snout := head + Vector2(face * s * 0.2, s * 0.04)
+	ci.draw_colored_polygon(ellipse(snout, s * 0.1, s * 0.08, 14), Color("e88aa0"))
+	ci.draw_circle(snout + Vector2(-s * 0.03, 0), s * 0.018, Color("5a3a3a"))
+	ci.draw_circle(snout + Vector2(s * 0.03, 0), s * 0.018, Color("5a3a3a"))
+	ci.draw_circle(head + Vector2(face * s * 0.05, -s * 0.06), s * 0.035, Color("2a1e1e"))
+	ci.draw_circle(head + Vector2(face * s * 0.04, -s * 0.075), s * 0.012, Color.WHITE)

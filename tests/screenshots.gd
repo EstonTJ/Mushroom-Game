@@ -158,6 +158,7 @@ func _ready() -> void:
 	# Late game forest (night 33): all 15 mushrooms in the basket.
 	await frames(2)
 	Data.day = 33
+	Data.upgrades["truffle_pig"] = true
 	var late = Forage.new()
 	add_child(late)
 	late.items.append({"id": "ghost_fungus", "pos": Vector2(470, 640), "age": 0.5, "life": 3.0, "ph": 0.0})
@@ -205,4 +206,7 @@ func _ready() -> void:
 	layer.add_child(over)
 	await frames(6)
 	await shot("12_market_overlay")
+	over.page = 1
+	await frames(6)
+	await shot("12_market_page2")
 	get_tree().quit()

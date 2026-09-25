@@ -17,6 +17,11 @@ var overlay := false
 ## When opened as an overlay: the save checkpoint to rewrite after a purchase
 ## ("" = don't save now; the next checkpoint will).
 var save_phase := ""
+## The market shows PER_PAGE items at a time, with arrows when there are more.
+const PER_PAGE := 3
+const PAGE_PREV := Rect2(40, 1156, 90, 60)
+const PAGE_NEXT := Rect2(590, 1156, 90, 60)
+var page := 0
 var earned_coins := 0
 var earned_bones := 0
 var t := 0.0
@@ -46,6 +51,16 @@ func _box(bg: Color, border: Color, radius: int, border_w: int) -> StyleBoxFlat:
 	return b
 
 
+func pages() -> int:
+	return ceili(float(Data.shop_order.size()) / PER_PAGE)
+
+
+## Items on the current page.
+func page_items() -> Array:
+	return Data.shop_order.slice(page * PER_PAGE, page * PER_PAGE + PER_PAGE)
+
+
+## Card slot i on the current page (0-2).
 func card_rect(i: int) -> Rect2:
 	return Rect2(40, FIRST_CARD_Y + i * (CARD_H + 8), CARD_W, CARD_H)
 
@@ -75,9 +90,16 @@ func tap(p: Vector2) -> void:
 	if overlay and CLOSE.has_point(p):
 		closed.emit()
 		return
-	for i in Data.shop_order.size():
+	if pages() > 1 and PAGE_PREV.has_point(p):
+		page = posmod(page - 1, pages())
+		return
+	if pages() > 1 and PAGE_NEXT.has_point(p):
+		page = posmod(page + 1, pages())
+		return
+	var shown := page_items()
+	for i in shown.size():
 		if buy_rect(i).has_point(p):
-			try_buy(Data.shop_order[i])
+			try_buy(shown[i])
 
 
 func try_buy(item: String) -> bool:
@@ -90,7 +112,7 @@ func try_buy(item: String) -> bool:
 		return false
 	if Data.buy(item):
 		message = "%s added to your lab!" % info["name"]
-		var at := buy_rect(Data.shop_order.find(item)).get_center()
+		var at := buy_rect(maxi(0, page_items().find(item))).get_center()
 		for k in 40:
 			particles.append({"pos": at, "vel": Vector2.from_angle(randf() * TAU) * randf_range(120, 380), "life": randf_range(0.6, 1.2),
 				"max": 1.2, "color": [Color("ffd35a"), Color.WHITE, Color("8bc5c3")][k % 3]})
@@ -133,16 +155,27 @@ func _draw() -> void:
 		earned = "Open any time from the Menu"
 	draw_string(font, purse.position + Vector2(260, 44), earned, HORIZONTAL_ALIGNMENT_RIGHT, 360, 19, Color("6a5a48"))
 
-	for i in Data.shop_order.size():
-		_draw_item(font, rid, i, Data.shop_order[i])
+	var shown := page_items()
+	for i in shown.size():
+		_draw_item(font, rid, i, shown[i])
+	if pages() > 1:
+		for r in [PAGE_PREV, PAGE_NEXT]:
+			card_box.draw(rid, r)
+		draw_string(font, PAGE_PREV.position + Vector2(0, 42), "<", HORIZONTAL_ALIGNMENT_CENTER, PAGE_PREV.size.x, 30, Data.ink)
+		draw_string(font, PAGE_NEXT.position + Vector2(0, 42), ">", HORIZONTAL_ALIGNMENT_CENTER, PAGE_NEXT.size.x, 30, Data.ink)
+		draw_string_outline(font, Vector2(0, 1196), "Page %d of %d" % [page + 1, pages()], HORIZONTAL_ALIGNMENT_CENTER, 720, 22, 6,
+			Color(0, 0, 0, 0.4))
+		draw_string(font, Vector2(0, 1196), "Page %d of %d" % [page + 1, pages()], HORIZONTAL_ALIGNMENT_CENTER, 720, 22, Color.WHITE)
 
-	var soon := card_rect(Data.shop_order.size())
+	var soon := card_rect(shown.size())
 	soon.size.y = 76
-	soon_box.draw(rid, soon)
-	draw_string(font, soon.position + Vector2(0, 34), "More lab upgrades coming soon", HORIZONTAL_ALIGNMENT_CENTER, soon.size.x, 22,
-		Color(0.4, 0.3, 0.22, 0.8))
-	draw_string(font, soon.position + Vector2(0, 60), "Keep your coins and bones: the merchant brings new wares.", HORIZONTAL_ALIGNMENT_CENTER,
-		soon.size.x, 15, Color(0.4, 0.3, 0.22, 0.7))
+	if shown.size() < PER_PAGE:
+		soon_box.draw(rid, soon)
+	if shown.size() < PER_PAGE:
+		draw_string(font, soon.position + Vector2(0, 34), "More wares coming soon", HORIZONTAL_ALIGNMENT_CENTER, soon.size.x, 22,
+			Color(0.4, 0.3, 0.22, 0.8))
+		draw_string(font, soon.position + Vector2(0, 60), "Keep your coins and bones: the merchant brings new wares.", HORIZONTAL_ALIGNMENT_CENTER,
+			soon.size.x, 15, Color(0.4, 0.3, 0.22, 0.7))
 
 	if message != "" and message_t < 3.0:
 		var a := clampf(3.0 - message_t, 0.0, 1.0)
@@ -169,6 +202,8 @@ func _draw_item(font: Font, rid: RID, i: int, item: String) -> void:
 		_draw_bone_appetit(icon)
 	elif item == "batch_brewer":
 		_draw_batch_brewer(icon)
+	elif item == "truffle_pig":
+		Art.pig(self, icon + Vector2(0, 16), 110, 1.0, t, fmod(t, 2.0) < 0.5)
 	else:
 		_draw_mortar(icon, 1.0)
 	# Long names shrink to fit beside the Buy button.
@@ -177,7 +212,7 @@ func _draw_item(font: Font, rid: RID, i: int, item: String) -> void:
 	while size > 18 and font.get_string_size(info["name"], HORIZONTAL_ALIGNMENT_LEFT, -1, size).x > title_w:
 		size -= 1
 	draw_string(font, c.position + Vector2(190, 48), info["name"], HORIZONTAL_ALIGNMENT_LEFT, -1, size, Data.ink)
-	draw_string(font, c.position + Vector2(190, 74), "Lab upgrade", HORIZONTAL_ALIGNMENT_LEFT, -1, 17, Color("8a6242"))
+	draw_string(font, c.position + Vector2(190, 74), info.get("kind", "Lab upgrade"), HORIZONTAL_ALIGNMENT_LEFT, -1, 17, Color("8a6242"))
 	draw_multiline_string(font, c.position + Vector2(190, 102), info["desc"], HORIZONTAL_ALIGNMENT_LEFT, c.size.x - 210, 16, 4,
 		Art.fade(Data.ink, 0.85))
 	var b := buy_rect(i)

@@ -5,7 +5,7 @@ extends Node
 
 ## Shown on the title screen and in the menu, so players can tell whether
 ## their browser has the latest update. Bump it with each release.
-const VERSION := "0.17"
+const VERSION := "0.18"
 const HUT_HP := 5
 const NIGHTS := 40
 ## When mushrooms unlock, in ingredient_order: three on night 1, one more on
@@ -249,10 +249,12 @@ var shop_items := {
 		"desc": "Never forget a bone again. Drops a monster bone into every brew by itself, as long as you have one. Switch it off at the bone bowl to save bones."},
 	"batch_brewer": {"name": "Loader of Mass Production", "price": 100,
 		"desc": "Brew up to 5 potions at once. Set the batch dial by the cauldron: each potion in the batch uses one of each mushroom (and a bone, if one's in)."},
+	"truffle_pig": {"name": "Truffle Pig", "price": 75, "kind": "Forest helper",
+		"desc": "A keen-nosed pig joins your forest walks. It sniffs out the nearest mushroom and gathers it for you, then pauses to celebrate. Rocks and stumps are still up to you."},
 }
 ## The most potions one batch can make (with the Batch Brewer).
 const MAX_BATCH := 5
-var shop_order := ["bone_mortar", "bone_appetit", "batch_brewer"]
+var shop_order := ["bone_mortar", "bone_appetit", "batch_brewer", "truffle_pig"]
 
 ## How much stronger an Empowered potion (one brewed with a monster bone) is.
 const EMPOWER := {"radius": 1.3, "duration": 1.4, "dps": 1.5, "burst": 1.5, "ward": 2, "heal": 1}

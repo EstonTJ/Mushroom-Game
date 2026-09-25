@@ -308,6 +308,41 @@ func _ready() -> void:
 	main.queue_free()
 	await frames(1)
 
+	# --- Truffle Pig ------------------------------------------------------------
+	Data.upgrades.erase("truffle_pig")
+	var f_nopig = Forage.new()
+	add_child(f_nopig)
+	check(f_nopig.pig.is_empty(), "no pig on the walk until it's bought")
+	f_nopig.queue_free()
+	Data.upgrades["truffle_pig"] = true
+	var fp = Forage.new()
+	add_child(fp)
+	await frames(1)
+	fp.items = [{"id": "chanterelle", "pos": Vector2(400, 700), "age": 1.0, "life": 99.0, "ph": 0.0}]
+	fp.pig["rest"] = 0.0
+	var ch_before: int = Data.inventory["chanterelle"]
+	for i in 300:
+		fp.pig_step(0.05)
+		if fp.items.is_empty():
+			break
+	check(fp.items.is_empty() and Data.inventory["chanterelle"] == ch_before + 1 and fp.pig["rest"] > 0.0,
+		"the Truffle Pig trots over, gathers the mushroom, then rests")
+	fp.queue_free()
+	Data.upgrades.erase("truffle_pig")
+
+	# The market pages when there are more wares than fit.
+	var Shop3 = load("res://scripts/shop.gd")
+	var sh3 = Shop3.new()
+	add_child(sh3)
+	check(sh3.pages() == 2 and sh3.page_items() == ["bone_mortar", "bone_appetit", "batch_brewer"], "the market shows 3 wares a page")
+	sh3.tap(sh3.PAGE_NEXT.get_center())
+	check(sh3.page == 1 and sh3.page_items() == ["truffle_pig"], "the arrow turns to the page with the Truffle Pig")
+	Data.coins = 80
+	sh3.tap(sh3.buy_rect(0).get_center())
+	check(Data.upgrades.has("truffle_pig") and Data.coins == 5, "the Truffle Pig costs 75 coins")
+	sh3.queue_free()
+	Data.upgrades.erase("truffle_pig")
+
 	# --- Nights grow: more creatures, new types easing in --------------------
 	var n1 := Data.night_config(1)
 	var n12 := Data.night_config(12)

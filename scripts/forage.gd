@@ -43,6 +43,9 @@ var bounce := {}
 var particles := []
 var butterflies := []
 var rare_spawned := false
+## The Truffle Pig (a market helper): where it is, which way it faces, and
+## how long it rests after each find.
+var pig := {}
 var obstacles := []
 var done := false
 var t := 0.0
@@ -105,6 +108,8 @@ func _ready() -> void:
 	add_child(canopy_layer)
 	ui_layer = _add_layer(_paint_ui, false)
 	_place_obstacles()
+	if Data.upgrades.has("truffle_pig"):
+		pig = {"pos": Vector2(120, 1020), "face": 1.0, "rest": 1.0, "walk": 0.0}
 	for i in 3:
 		_spawn()
 
@@ -313,6 +318,8 @@ func _process(delta: float) -> void:
 
 	_update_particles(delta)
 	_update_butterflies(delta)
+	if not pig.is_empty() and not done:
+		pig_step(delta)
 	shade_layer.queue_redraw()
 	light_under.queue_redraw()
 	objects.queue_redraw()
@@ -400,6 +407,37 @@ func _unhandled_input(event: InputEvent) -> void:
 		tap_at(get_global_mouse_position())
 
 
+## Pig speed (px/s), how close its snout must get, and its rest after a find.
+const PIG_SPEED := 130.0
+const PIG_REACH := 36.0
+const PIG_REST := 0.9
+
+
+## The pig trots to the nearest mushroom and gathers it, then rests a moment.
+func pig_step(delta: float) -> void:
+	if pig["rest"] > 0.0:
+		pig["rest"] -= delta
+		return
+	var best := -1
+	var best_d := INF
+	for i in items.size():
+		var d: float = items[i]["pos"].distance_to(pig["pos"])
+		if d < best_d:
+			best_d = d
+			best = i
+	if best < 0:
+		return
+	var target: Vector2 = items[best]["pos"] + Vector2(-pig["face"] * 30.0, 16)
+	var to := target - Vector2(pig["pos"])
+	if to.length() > 4.0:
+		pig["face"] = 1.0 if items[best]["pos"].x > pig["pos"].x else -1.0
+		pig["pos"] = Vector2(pig["pos"]) + to.normalized() * minf(PIG_SPEED * delta, to.length())
+		pig["walk"] += delta
+	if items[best]["pos"].distance_to(pig["pos"] + Vector2(pig["face"] * 30.0, -16)) < PIG_REACH + 10.0:
+		_collect(best, "Oink! +1 ")
+		pig["rest"] = PIG_REST
+
+
 ## A tap on the forest floor: chips at a rock or stump, or picks a mushroom.
 func tap_at(p: Vector2) -> void:
 	for o in obstacles:
@@ -409,13 +447,19 @@ func tap_at(p: Vector2) -> void:
 	for i in range(items.size() - 1, -1, -1):
 		var it: Dictionary = items[i]
 		if it["pos"].distance_to(p) < 60.0:
-			var info: Dictionary = Data.ingredients[it["id"]]
-			Data.inventory[it["id"]] += 1
-			popups.append({"text": "+1 " + info["name"], "pos": it["pos"], "t": 0.0, "color": info["color"]})
-			flyers.append({"id": it["id"], "from": it["pos"], "t": 0.0})
-			_burst(it["pos"], info["color"].lightened(0.35), 12, 160.0)
-			items.remove_at(i)
+			_collect(i, "+1 ")
 			break
+
+
+## Gather item i into the basket (by a tap or the pig).
+func _collect(i: int, prefix: String) -> void:
+	var it: Dictionary = items[i]
+	var info: Dictionary = Data.ingredients[it["id"]]
+	Data.inventory[it["id"]] += 1
+	popups.append({"text": prefix + info["name"], "pos": it["pos"], "t": 0.0, "color": info["color"]})
+	flyers.append({"id": it["id"], "from": it["pos"], "t": 0.0})
+	_burst(it["pos"], info["color"].lightened(0.35), 12, 160.0)
+	items.remove_at(i)
 
 
 # -------------------------------------------------------------- particles ---
@@ -675,6 +719,8 @@ func _paint_objects(ci: CanvasItem) -> void:
 
 	for b in butterflies:
 		_paint_butterfly(ci, b)
+	if not pig.is_empty():
+		Art.pig(ci, pig["pos"], 64, pig["face"], pig["walk"], pig["rest"] > 0.0)
 
 	for p in particles:
 		var f: float = p["life"] / p["max"]
