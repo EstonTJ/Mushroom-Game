@@ -249,6 +249,8 @@ var shop_order := ["bone_mortar"]
 const EMPOWER := {"radius": 1.3, "duration": 1.4, "dps": 1.5, "burst": 1.5, "ward": 2, "heal": 1}
 
 var day := 1
+## The furthest day reached; nights up to this can be replayed from the menu.
+var best_day := 1
 var coins := 0
 var bones := 0
 var upgrades := {}
@@ -264,6 +266,7 @@ var _snapshot := {}
 
 func reset_game() -> void:
 	day = 1
+	best_day = 1
 	inventory.clear()
 	bottles.clear()
 	discovered.clear()
@@ -302,7 +305,7 @@ func _web() -> bool:
 func save_game(phase: String = "forage") -> void:
 	var text := JSON.stringify({"version": SAVE_VERSION, "day": day, "phase": phase, "inventory": inventory,
 		"bottles": bottles, "discovered": discovered, "seen_creatures": seen_creatures, "unlock_seen": unlock_seen,
-		"coins": coins, "bones": bones, "upgrades": upgrades, "snapshot": _snapshot})
+		"coins": coins, "bones": bones, "upgrades": upgrades, "best_day": maxi(best_day, day), "snapshot": _snapshot})
 	var f := FileAccess.open(SAVE_PATH, FileAccess.WRITE)
 	if f != null:
 		f.store_string(text)
@@ -334,6 +337,7 @@ func load_game() -> bool:
 		return false
 	reset_game()
 	day = clampi(int(data.get("day", 1)), 1, NIGHTS)
+	best_day = clampi(int(data.get("best_day", day)), day, NIGHTS)
 	unlock_seen = int(data.get("unlock_seen", 0))
 	saved_phase = str(data.get("phase", "forage"))
 	for id in ingredient_order:

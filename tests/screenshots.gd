@@ -172,4 +172,18 @@ func _ready() -> void:
 	g.open("lions_mane")
 	await frames(20)
 	await shot("9_guide_lions_mane")
+	g.visible = false
+
+	# The menu and the night picker (furthest reached: night 12, now on 9).
+	var Menu = load("res://scripts/menu.gd")
+	var mn = Menu.new()
+	layer.add_child(mn)
+	Data.day = 9
+	Data.best_day = 12
+	mn.open()
+	await frames(4)
+	await shot("11_menu")
+	mn.page = "levels"
+	await frames(4)
+	await shot("11_menu_nights")
 	get_tree().quit()

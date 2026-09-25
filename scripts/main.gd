@@ -8,6 +8,7 @@ const Defense = preload("res://scripts/defense.gd")
 const Unlock = preload("res://scripts/unlock.gd")
 const Guide = preload("res://scripts/guide.gd")
 const Shop = preload("res://scripts/shop.gd")
+const Menu = preload("res://scripts/menu.gd")
 
 var phase := ""
 var phase_node = null
@@ -17,6 +18,7 @@ var action_btn: Button
 var action := Callable()
 var guide_btn: Button
 var guide
+var menu
 var diag_timer := 0.0
 var fps_label: Label
 
@@ -124,11 +126,11 @@ func _build_hud() -> void:
 	layer.add_child(action_btn)
 
 	guide_btn = Button.new()
-	guide_btn.text = "Guide"
+	guide_btn.text = "Menu"
 	guide_btn.position = Vector2(404, 26)
 	guide_btn.size = Vector2(104, 58)
 	guide_btn.add_theme_font_size_override("font_size", 22)
-	guide_btn.pressed.connect(open_guide)
+	guide_btn.pressed.connect(open_menu)
 	layer.add_child(guide_btn)
 
 	# Frame counter for performance checks: add ?fps to the web address.
@@ -149,6 +151,13 @@ func _build_hud() -> void:
 	guide.visible = false
 	guide.closed.connect(_on_guide_closed)
 	guide_layer.add_child(guide)
+	menu = Menu.new()
+	menu.visible = false
+	menu.resumed.connect(_on_guide_closed)
+	menu.guide_requested.connect(func(): open_guide())
+	menu.night_chosen.connect(_on_night_chosen)
+	menu.restart_confirmed.connect(_on_restart)
+	guide_layer.add_child(menu)
 
 
 ## Opens the Field Guide and pauses the game until it's closed.
@@ -161,6 +170,32 @@ func _on_guide_closed() -> void:
 	get_tree().paused = false
 
 
+## Opens the game menu and pauses the game until it's closed.
+func open_menu() -> void:
+	menu.open()
+	get_tree().paused = true
+
+
+## Replay a night from the menu: today's unfinished progress is undone (as
+## with Retry day), then that day starts in the forest with current stock.
+func _on_night_chosen(n: int) -> void:
+	get_tree().paused = false
+	if phase in ["forage", "brew", "fortify", "night", "result"]:
+		Data.restore_snapshot()
+	Data.best_day = maxi(Data.best_day, Data.day)
+	Data.day = n
+	Data.unlock_seen = maxi(Data.unlock_seen, n)
+	_start_day()
+	hint.text = "Replaying night %d." % n
+
+
+func _on_restart() -> void:
+	get_tree().paused = false
+	Data.clear_save()
+	Data.reset_game()
+	_begin_day()
+
+
 func _on_action() -> void:
 	if action.is_valid():
 		action.call()
@@ -170,6 +205,9 @@ func _set_phase(new_phase: String, node: Node2D, t: String, h: String, button_te
 	phase = new_phase
 	Data.write_diag(new_phase + " (starting)")
 	if phase_node:
+		# Take the old screen out at once so it can't fire signals (a forest
+		# timer running out, say) after the new screen has started.
+		remove_child(phase_node)
 		phase_node.queue_free()
 	phase_node = node
 	add_child(node)
@@ -212,6 +250,7 @@ func _on_unlock_continue() -> void:
 
 
 func _start_day() -> void:
+	Data.best_day = maxi(Data.best_day, Data.day)
 	Data.take_snapshot()
 	Data.save_game()
 	var forage := Forage.new()
@@ -280,6 +319,7 @@ func _to_market(got_coins: int, got_bones: int) -> void:
 	if phase != "result":
 		return
 	Data.day += 1
+	Data.best_day = maxi(Data.best_day, Data.day)
 	Data.save_game("market")
 	_start_market(got_coins, got_bones)
 

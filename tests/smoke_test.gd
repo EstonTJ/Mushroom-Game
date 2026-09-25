@@ -471,6 +471,47 @@ func _ready() -> void:
 	m2.queue_free()
 	await frames(1)
 
+	# The menu: resume, replay a reached night, start over.
+	Data.clear_save()
+	Data.reset_game()
+	Data.day = 5
+	Data.best_day = 5
+	Data.coins = 20
+	Data.save_game()
+	var m4 = load("res://main.tscn").instantiate()
+	add_child(m4)
+	await frames(2)
+	m4.open_menu()
+	var mn = m4.menu
+	check(get_tree().paused and mn.visible and mn.page == "main", "Menu opens and pauses the game")
+	mn.tap(mn.main_button(0).get_center())
+	check(not get_tree().paused and not mn.visible, "Resume closes it and unpauses")
+	m4.open_menu()
+	mn.tap(mn.main_button(2).get_center())
+	check(mn.page == "levels" and mn.can_choose(5) and not mn.can_choose(6), "nights up to the furthest reached can be chosen")
+	mn.tap(mn.tile_rect(6).get_center())
+	check(mn.visible and Data.day == 5, "a locked night can't be picked")
+	m4.phase_node.time_left = 0.0
+	Data.inventory["puffball"] = 9
+	mn.tap(mn.tile_rect(2).get_center())
+	await frames(2)
+	check(Data.day == 2 and Data.best_day == 5 and m4.phase == "forage" and not get_tree().paused,
+		"picking night 2 replays it and keeps the furthest night (5)")
+	check(Data.coins == 20, "replaying keeps coins and bones")
+	check(Data.load_game() and Data.day == 2 and Data.best_day == 5, "the replay and furthest night are saved")
+	m4.open_menu()
+	mn.tap(mn.main_button(3).get_center())
+	check(mn.page == "confirm" and Data.day == 2, "Start over asks first")
+	mn.tap(mn.NO.get_center())
+	check(mn.page == "main" and Data.day == 2, "Cancel keeps the game")
+	mn.tap(mn.main_button(3).get_center())
+	mn.tap(mn.YES.get_center())
+	await frames(2)
+	check(Data.day == 1 and Data.best_day == 1 and Data.coins == 0 and m4.phase == "unlock" and not get_tree().paused,
+		"Start over begins again on night 1")
+	m4.queue_free()
+	await frames(1)
+
 	Data.clear_save()
 	check(not Data.load_game(), "with no save, the game starts fresh")
 
