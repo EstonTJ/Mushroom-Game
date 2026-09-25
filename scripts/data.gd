@@ -3,6 +3,9 @@ extends Node
 ## carries from day to day. Registered as the "Data" autoload in project.godot.
 ## Most balance tuning happens in this file.
 
+## Shown on the title screen and in the menu, so players can tell whether
+## their browser has the latest update. Bump it with each release.
+const VERSION := "0.14"
 const HUT_HP := 5
 const NIGHTS := 40
 ## When mushrooms unlock, in ingredient_order: three on night 1, one more on

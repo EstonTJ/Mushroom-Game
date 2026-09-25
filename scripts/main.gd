@@ -9,6 +9,7 @@ const Unlock = preload("res://scripts/unlock.gd")
 const Guide = preload("res://scripts/guide.gd")
 const Shop = preload("res://scripts/shop.gd")
 const Menu = preload("res://scripts/menu.gd")
+const Title = preload("res://scripts/title.gd")
 
 var phase := ""
 var phase_node = null
@@ -20,6 +21,8 @@ var guide_btn: Button
 var guide
 var menu
 var diag_timer := 0.0
+var hud_layer: CanvasLayer
+var last_session_note := ""
 var fps_label: Label
 
 
@@ -46,11 +49,38 @@ func _ready() -> void:
 		_start_day()
 		hint.text = "Playtest: started on day %d with 5 of each potion." % jump
 		return
-	if not Data.load_game():
+	var closed_normally: bool = str(event.get("kind", "")) == "page closed"
+	if not last.is_empty() and not closed_normally and str(last.get("phase", "")) != "title":
+		last_session_note = "Last session stopped: day %d, %s, %d fps" % [int(last.get("day", 0)), str(last.get("phase", "?")),
+			int(last.get("fps", 0))]
+		if not event.is_empty():
+			last_session_note += ", " + str(event.get("kind", ""))
+	show_title()
+
+
+## The title screen, shown every time the game opens (and from the menu).
+func show_title() -> void:
+	get_tree().paused = false
+	var has_save := Data.load_game()
+	if not has_save:
 		Data.reset_game()
-		_begin_day()
+	var title_node := Title.new()
+	title_node.has_save = has_save
+	title_node.save_day = Data.day
+	title_node.best_day = maxi(Data.best_day, Data.day)
+	title_node.note = last_session_note
+	title_node.continue_pressed.connect(continue_game)
+	title_node.new_game_pressed.connect(new_game)
+	title_node.choose_pressed.connect(func(): open_menu("levels"))
+	title_node.guide_pressed.connect(func(): open_guide())
+	_set_phase("title", title_node, "", "", "", Callable())
+
+
+## Continue from the save, on the screen it was made on.
+func continue_game() -> void:
+	if phase != "title":
 		return
-	# Resume where the save was made: the forest, the cauldron or fortifying.
+	Data.load_game()
 	match Data.saved_phase:
 		"brew":
 			_enter_brew()
@@ -60,14 +90,13 @@ func _ready() -> void:
 			_start_market(0, 0)
 		_:
 			_begin_day()
-	var note := "Welcome back! Resumed day %d." % Data.day
-	var closed_normally: bool = str(event.get("kind", "")) == "page closed"
-	if not last.is_empty() and not closed_normally:
-		note = "Resumed. Last stop: day %d, %s, %d fps" % [int(last.get("day", 0)), str(last.get("phase", "?")), int(last.get("fps", 0))]
-		if not event.is_empty():
-			note += ", " + str(event.get("kind", ""))
-		note += "."
-	hint.text = note
+	hint.text = "Welcome back! Resumed day %d." % Data.day
+
+
+func new_game() -> void:
+	Data.clear_save()
+	Data.reset_game()
+	_begin_day()
 
 
 func _url_day() -> int:
@@ -98,6 +127,7 @@ func _process(delta: float) -> void:
 func _build_hud() -> void:
 	var layer := CanvasLayer.new()
 	add_child(layer)
+	hud_layer = layer
 
 	var bar := ColorRect.new()
 	bar.color = Data.moss
@@ -157,6 +187,7 @@ func _build_hud() -> void:
 	menu.guide_requested.connect(func(): open_guide())
 	menu.night_chosen.connect(_on_night_chosen)
 	menu.restart_confirmed.connect(_on_restart)
+	menu.title_requested.connect(show_title)
 	guide_layer.add_child(menu)
 
 
@@ -170,9 +201,10 @@ func _on_guide_closed() -> void:
 	get_tree().paused = false
 
 
-## Opens the game menu and pauses the game until it's closed.
-func open_menu() -> void:
+## Opens the game menu (optionally on a page) and pauses the game until it's closed.
+func open_menu(on_page: String = "main") -> void:
 	menu.open()
+	menu.page = on_page
 	get_tree().paused = true
 
 
@@ -204,6 +236,8 @@ func _on_action() -> void:
 func _set_phase(new_phase: String, node: Node2D, t: String, h: String, button_text: String, on_action: Callable) -> void:
 	phase = new_phase
 	Data.write_diag(new_phase + " (starting)")
+	# The title screen has its own buttons; the top bar is for play.
+	hud_layer.visible = new_phase != "title"
 	if phase_node:
 		# Take the old screen out at once so it can't fire signals (a forest
 		# timer running out, say) after the new screen has started.

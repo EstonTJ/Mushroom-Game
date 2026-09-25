@@ -25,8 +25,15 @@ func _ready() -> void:
 	DirAccess.make_dir_recursive_absolute(out_dir)
 
 	# Day 1 forest: the first three mushrooms, rocks and stumps, the intro banner.
+	# The title screen: first with a save (Continue on day 7), then fresh.
+	Data.reset_game()
+	Data.day = 7
+	Data.save_game()
 	var main = load("res://main.tscn").instantiate()
 	add_child(main)
+	await frames(30)
+	await shot("00_title")
+	main.new_game()
 	await frames(50)
 	await shot("0_unlock_day1")
 	while main.phase == "unlock":

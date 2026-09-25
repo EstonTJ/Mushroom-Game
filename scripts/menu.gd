@@ -6,13 +6,14 @@ signal resumed
 signal guide_requested
 signal night_chosen(n: int)
 signal restart_confirmed
+signal title_requested
 
 const Art = preload("res://scripts/art.gd")
 
 const PANEL := Rect2(16, 30, 688, 1220)
 const CLOSE := Rect2(612, 46, 76, 64)
 const BACK := Rect2(32, 46, 120, 64)
-const MAIN_BUTTONS := ["Resume", "Field Guide", "Choose a night", "Start over"]
+const MAIN_BUTTONS := ["Resume", "Field Guide", "Choose a night", "Title screen", "Start over"]
 const COLS := 5
 const TILE := Vector2(120, 104)
 const GRID_TOP := 196.0
@@ -52,7 +53,7 @@ func open() -> void:
 
 
 func main_button(i: int) -> Rect2:
-	return Rect2(110, 330 + i * 130, 500, 96)
+	return Rect2(110, 320 + i * 118, 500, 92)
 
 
 func tile_rect(n: int) -> Rect2:
@@ -82,6 +83,9 @@ func tap(p: Vector2) -> void:
 						2:
 							page = "levels"
 						3:
+							visible = false
+							title_requested.emit()
+						4:
 							page = "confirm"
 					return
 		"levels":
@@ -148,14 +152,15 @@ func _draw_main(font: Font, rid: RID) -> void:
 	draw_string(font, Vector2(0, 280), "Mushroom Moon", HORIZONTAL_ALIGNMENT_CENTER, 720, 44, Color("7a3a2a"))
 	for i in MAIN_BUTTONS.size():
 		var r := main_button(i)
-		(danger_box if i == 3 else button_box).draw(rid, r)
+		(danger_box if i == MAIN_BUTTONS.size() - 1 else button_box).draw(rid, r)
 		draw_string(font, r.position + Vector2(0, 62), MAIN_BUTTONS[i], HORIZONTAL_ALIGNMENT_CENTER, r.size.x, 32, Data.parchment)
-	draw_string(font, Vector2(0, 900), "Day %d  ·  furthest reached: night %d" % [Data.day, maxi(Data.best_day, Data.day)],
+	draw_string(font, Vector2(0, 950), "Day %d  ·  furthest reached: night %d" % [Data.day, maxi(Data.best_day, Data.day)],
 		HORIZONTAL_ALIGNMENT_CENTER, 720, 22, Color("6a5a48"))
-	Art.coin(self, Vector2(290, 960), 28)
-	draw_string(font, Vector2(310, 970), str(Data.coins), HORIZONTAL_ALIGNMENT_LEFT, -1, 24, Data.ink)
-	Art.bone(self, Vector2(410, 960), 36)
-	draw_string(font, Vector2(436, 970), str(Data.bones), HORIZONTAL_ALIGNMENT_LEFT, -1, 24, Data.ink)
+	Art.coin(self, Vector2(290, 1010), 28)
+	draw_string(font, Vector2(310, 1020), str(Data.coins), HORIZONTAL_ALIGNMENT_LEFT, -1, 24, Data.ink)
+	Art.bone(self, Vector2(410, 1010), 36)
+	draw_string(font, Vector2(436, 1020), str(Data.bones), HORIZONTAL_ALIGNMENT_LEFT, -1, 24, Data.ink)
+	draw_string(font, Vector2(0, 1210), "Version " + Data.VERSION, HORIZONTAL_ALIGNMENT_CENTER, 720, 16, Color("8a7a60"))
 
 
 func _draw_levels(font: Font, rid: RID) -> void:

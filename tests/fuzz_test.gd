@@ -22,6 +22,8 @@ func _ready() -> void:
 	var main = load("res://main.tscn").instantiate()
 	add_child(main)
 	await frames(2)
+	main.new_game()
+	await frames(2)
 	while main.phase == "unlock":
 		main._on_action()
 		await frames(2)
