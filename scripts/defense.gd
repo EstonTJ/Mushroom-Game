@@ -4,21 +4,37 @@ extends Node2D
 ## or tap the hut with a Moon Ward. Night: creatures walk the paths; a placed
 ## bottle bursts when one gets close. Saved bottles can still be placed on a free
 ## spot (including one whose trap already burst) or thrown anywhere else.
+##
+## Drawing is split into stacked layers (see _ready) so lights can be added on
+## top with additive blending: ground -> light pools -> objects -> glows ->
+## tree canopy -> UI. The ground and canopy only redraw while dusk turns to night.
 
 signal night_over(won: bool, repelled: int)
 
 const Art = preload("res://scripts/art.gd")
 
 const HUT := Vector2(360, 1000)
+const HUT_SIZE := 160.0
+const POND := Vector2(360, 250)
 const BAR_Y := 1130.0
-const MOON := Vector2(360, 230)
 const CELL_W := 180.0
+const NIGHT_FADE := 1.5
+const LANTERN_SIZE := 60.0
+const CREATURE_SIZE := 42.0
 const LEFT_PATH := [Vector2(40, 120), Vector2(180, 330), Vector2(110, 560), Vector2(250, 780), Vector2(330, 950)]
 const RIGHT_PATH := [Vector2(680, 120), Vector2(540, 320), Vector2(630, 560), Vector2(470, 780), Vector2(390, 950)]
 
+
+## One drawing layer. It calls back into this script so all drawing stays here.
+class Layer extends Node2D:
+	var painter: Callable
+
+	func _draw() -> void:
+		painter.call(self)
+
+
 var curves: Array[Curve2D] = []
 var slots := []
-var decor := []
 var mode := "fortify"
 var selected := ""
 var ward := 0
@@ -28,11 +44,36 @@ var cfg: Dictionary = {}
 var enemies := []
 var areas := []
 var popups := []
+var particles := []
+var fireflies := []
 var spawned := 0
 var spawn_timer := 0.0
+var smoke_timer := 0.0
 var repelled := 0
 var over := false
 var t := 0.0
+var night_amt := 0.0
+
+# Scenery, generated once from a fixed seed so the map is the same every night.
+var moss := []
+var grass := []
+var stones := []
+var pebbles := []
+var fences := []
+var lanterns := []
+var clusters := []
+var trees := []
+var reeds := []
+
+var ground_layer: Layer
+var light_under: Layer
+var objects: Layer
+var light_over: Layer
+var canopy_layer: Layer
+var ui_layer: Layer
+var status_box: StyleBoxFlat
+var cell_box: StyleBoxFlat
+var cell_selected_box: StyleBoxFlat
 
 
 func _ready() -> void:
@@ -44,19 +85,39 @@ func _ready() -> void:
 		var length := c.get_baked_length()
 		for f in [0.3, 0.55, 0.8]:
 			slots.append({"pos": c.sample_baked(length * f), "trap": "", "triggered": false})
+	_build_scenery()
 
-	var rng := RandomNumberGenerator.new()
-	rng.seed = 5
-	while decor.size() < 24:
-		var p := Vector2(rng.randf_range(20, 700), rng.randf_range(170, 1100))
-		var near_path := false
-		for c in curves:
-			if c.get_closest_point(p).distance_to(p) < 70.0:
-				near_path = true
-		if near_path or p.distance_to(HUT) < 190.0 or p.distance_to(MOON) < 110.0:
-			continue
-		var cols := [Color("b58fd6"), Color("d9623b"), Color("9ff0f0"), Color("e0a441")]
-		decor.append({"pos": p, "s": rng.randf_range(30, 70), "color": cols[rng.randi() % cols.size()]})
+	status_box = _box(Color(0.06, 0.05, 0.12, 0.7), Art.fade(Data.magic, 0.35), 14)
+	cell_box = _box(Color(1, 1, 1, 0.05), Color(1, 1, 1, 0.08), 16)
+	cell_selected_box = _box(Art.fade(Data.magic, 0.22), Data.magic, 16)
+
+	ground_layer = _add_layer(_paint_ground, false)
+	light_under = _add_layer(_paint_light_under, true)
+	objects = _add_layer(_paint_objects, false)
+	light_over = _add_layer(_paint_light_over, true)
+	canopy_layer = _add_layer(_paint_canopy, false)
+	ui_layer = _add_layer(_paint_ui, false)
+
+
+func _add_layer(painter: Callable, additive: bool) -> Layer:
+	var layer := Layer.new()
+	layer.painter = painter
+	if additive:
+		var m := CanvasItemMaterial.new()
+		m.blend_mode = CanvasItemMaterial.BLEND_MODE_ADD
+		layer.material = m
+	add_child(layer)
+	return layer
+
+
+func _box(bg: Color, border: Color, radius: int) -> StyleBoxFlat:
+	var b := StyleBoxFlat.new()
+	b.bg_color = bg
+	b.border_color = border
+	b.set_border_width_all(2)
+	b.set_corner_radius_all(radius)
+	b.anti_aliasing = true
+	return b
 
 
 func _make_curve(points: Array) -> Curve2D:
@@ -70,20 +131,145 @@ func _make_curve(points: Array) -> Curve2D:
 	return c
 
 
+# ---------------------------------------------------------------- scenery ---
+
+func _near_path(p: Vector2, dist: float) -> bool:
+	for c in curves:
+		if c.get_closest_point(p).distance_to(p) < dist:
+			return true
+	return false
+
+
+func _in_pond(p: Vector2, pad: float) -> bool:
+	return ((p - POND) / Vector2(128.0 + pad, 68.0 + pad)).length() < 1.0
+
+
+func _beside(c: Curve2D, f: float, side: float, dist: float) -> Vector2:
+	var d := c.get_baked_length() * f
+	var tangent := (c.sample_baked(d + 3.0) - c.sample_baked(d - 3.0)).normalized()
+	return c.sample_baked(d) + tangent.orthogonal() * side * dist
+
+
+func _fence(c: Curve2D, from: float, to: float, side: float) -> Array:
+	var posts := []
+	var length := c.get_baked_length()
+	var d := length * from
+	while d <= length * to:
+		posts.append(_beside(c, d / length, side, 52.0))
+		d += 34.0
+	return posts
+
+
+func _build_scenery() -> void:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 5
+
+	for i in 26:
+		moss.append({"pos": Vector2(rng.randf_range(0, 720), rng.randf_range(140, 1130)),
+			"rx": rng.randf_range(50, 120), "ry": rng.randf_range(25, 60), "a": rng.randf_range(0.35, 0.8)})
+
+	while grass.size() < 170:
+		var p := Vector2(rng.randf_range(10, 710), rng.randf_range(150, 1125))
+		if _near_path(p, 46.0) or _in_pond(p, 6.0):
+			continue
+		grass.append({"pos": p, "s": rng.randf_range(0.7, 1.4), "lean": rng.randf_range(-3, 3)})
+
+	while stones.size() < 20:
+		var p := Vector2(rng.randf_range(20, 700), rng.randf_range(160, 1110))
+		if _near_path(p, 50.0) or _in_pond(p, 10.0) or p.distance_to(HUT) < 150.0:
+			continue
+		stones.append({"pos": p, "r": rng.randf_range(6, 15)})
+
+	for c in curves:
+		var length := c.get_baked_length()
+		var d := 12.0
+		while d < length - 12.0:
+			var side := 1.0 if rng.randf() < 0.5 else -1.0
+			pebbles.append({"pos": _beside(c, d / length, side, rng.randf_range(24, 36)), "r": rng.randf_range(3, 6)})
+			d += rng.randf_range(16, 34)
+
+	fences.append(_fence(curves[0], 0.12, 0.34, 1.0))
+	fences.append(_fence(curves[1], 0.40, 0.62, 1.0))
+	fences.append(_fence(curves[0], 0.62, 0.72, -1.0))
+	lanterns.append(_beside(curves[0], 0.44, -1.0, 62.0))
+	lanterns.append(_beside(curves[1], 0.24, 1.0, 62.0))
+	lanterns.append(_beside(curves[1], 0.70, -1.0, 62.0))
+
+	var cols := [Color("b58fd6"), Color("d9623b"), Color("9ff0f0"), Color("e0a441"), Color("e98bb0")]
+	while clusters.size() < 16:
+		var p := Vector2(rng.randf_range(70, 650), rng.randf_range(190, 1080))
+		if _near_path(p, 75.0) or _in_pond(p, 40.0) or p.distance_to(HUT) < 200.0:
+			continue
+		var crowded := false
+		for l in lanterns:
+			if l.distance_to(p) < 70.0:
+				crowded = true
+		for cl in clusters:
+			if cl["pos"].distance_to(p) < 90.0:
+				crowded = true
+		if crowded:
+			continue
+		var color: Color = cols[rng.randi() % cols.size()]
+		var shrooms := []
+		for k in rng.randi_range(1, 3):
+			var off := Vector2.ZERO if k == 0 else Vector2(rng.randf_range(-26, 26), rng.randf_range(-10, 14))
+			shrooms.append({"off": off, "s": rng.randf_range(30, 60) * (1.0 if k == 0 else 0.6)})
+		shrooms.sort_custom(func(a, b): return a["off"].y < b["off"].y)
+		clusters.append({"pos": p, "color": color, "glow": color == Color("9ff0f0"), "shrooms": shrooms})
+	clusters.sort_custom(func(a, b): return a["pos"].y < b["pos"].y)
+
+	var y := 190.0
+	while y < 1080.0:
+		trees.append(_tree(Vector2(rng.randf_range(-40, 0), y), rng))
+		trees.append(_tree(Vector2(rng.randf_range(720, 760), y + 55.0), rng))
+		y += rng.randf_range(110, 150)
+	# Canopy over the path mouths, so creatures come out of the forest.
+	trees.append(_tree(Vector2(-5, 110), rng))
+	trees.append(_tree(Vector2(725, 110), rng))
+
+	for i in 14:
+		var ang := rng.randf_range(-0.3, PI + 0.3)
+		reeds.append({"pos": POND + Vector2(cos(ang) * 122, sin(ang) * 60), "h": rng.randf_range(18, 32),
+			"lean": rng.randf_range(-5, 5)})
+
+	for i in 18:
+		fireflies.append({"pos": Vector2(randf_range(40, 680), randf_range(170, 1100)),
+			"vel": Vector2.from_angle(randf() * TAU) * 12.0, "phase": randf() * TAU})
+
+
+func _tree(center: Vector2, rng: RandomNumberGenerator) -> Dictionary:
+	var blobs := []
+	for k in rng.randi_range(4, 5):
+		blobs.append({"off": Vector2(rng.randf_range(-35, 35), rng.randf_range(-35, 35)), "r": rng.randf_range(38, 62)})
+	return {"pos": center, "blobs": blobs}
+
+
+# ------------------------------------------------------------------ logic ---
+
 func start_night() -> void:
 	mode = "night"
-	spawn_timer = 1.5
+	spawn_timer = NIGHT_FADE
 
 
 func _process(delta: float) -> void:
 	t += delta
 	hit_flash = maxf(0.0, hit_flash - delta)
+	var was := night_amt
+	if mode == "night":
+		night_amt = minf(1.0, night_amt + delta / NIGHT_FADE)
 	for p in popups:
 		p["t"] += delta
 	popups = popups.filter(func(p): return p["t"] < 1.0)
+	_update_particles(delta)
 	if mode == "night" and not over:
 		_night_step(delta)
-	queue_redraw()
+	if night_amt != was:
+		ground_layer.queue_redraw()
+		canopy_layer.queue_redraw()
+	light_under.queue_redraw()
+	objects.queue_redraw()
+	light_over.queue_redraw()
+	ui_layer.queue_redraw()
 
 
 func _night_step(delta: float) -> void:
@@ -94,7 +280,8 @@ func _night_step(delta: float) -> void:
 			var path := randi() % 2
 			enemies.append({"path": path, "offset": 0.0, "pos": curves[path].sample_baked(0.0),
 				"courage": cfg["courage"], "max": cfg["courage"],
-				"speed": cfg["speed"] * randf_range(0.9, 1.15), "flee": -1.0, "dir": Vector2.UP})
+				"speed": cfg["speed"] * randf_range(0.9, 1.15), "flee": -1.0, "dir": Vector2.UP,
+				"seed": randf() * 10.0})
 			spawned += 1
 
 	for s in slots:
@@ -134,10 +321,12 @@ func _night_step(delta: float) -> void:
 				ward -= 1
 				repelled += 1
 				_popup("Warded!", HUT + Vector2(0, -170), Data.magic)
+				_burst(e["pos"], Data.magic, 16, 180.0)
 			else:
 				hut_hp -= 1
 				hit_flash = 0.4
 				_popup("-1", HUT + Vector2(0, -170), Color("ff7a6b"))
+				_burst(e["pos"], Color("ff7a6b"), 12, 140.0)
 			_scare(e)
 		else:
 			e["pos"] = c.sample_baked(e["offset"])
@@ -153,11 +342,19 @@ func _scare(e: Dictionary) -> void:
 	e["flee"] = 0.0
 	var away: Vector2 = e["pos"] - HUT
 	e["dir"] = away.normalized() if away.length() > 1.0 else Vector2.UP
+	for i in 8:
+		_emit(e["pos"] + Vector2(randf_range(-14, 14), randf_range(-14, 10)),
+			Vector2(randf_range(-40, 40), randf_range(-60, -10)), 0.8, 9.0, Color(0.6, 0.55, 0.75, 0.55), "puff")
 
 
 func _spawn_area(id: String, pos: Vector2) -> void:
 	var d: Dictionary = Data.potions[id]
-	areas.append({"id": id, "pos": pos, "radius": d["radius"], "time": d["duration"], "max": d["duration"]})
+	areas.append({"id": id, "pos": pos, "radius": d["radius"], "time": d["duration"], "max": d["duration"],
+		"sd": randf() * TAU})
+	if id == "ember":
+		_burst(pos, Color(1.0, 0.65, 0.25), 32, 320.0)
+	else:
+		_burst(pos, d["color"], 14, 160.0)
 	if d["burst"] > 0.0:
 		for e in enemies:
 			if e["flee"] < 0.0 and e["pos"].distance_to(pos) < d["radius"]:
@@ -212,21 +409,18 @@ func _fortify_tap(p: Vector2) -> void:
 				s["trap"] = ""
 			elif selected != "" and selected != "ward":
 				s["trap"] = selected
+				_burst(s["pos"], Data.potions[selected]["color"], 8, 90.0)
 				_use_selected()
 			return
 	if selected == "ward" and p.distance_to(HUT + Vector2(0, -60)) < 120.0:
-		ward += Data.potions["ward"]["ward"]
-		_popup("Ward +%d" % Data.potions["ward"]["ward"], HUT + Vector2(0, -170), Data.magic)
-		_use_selected()
+		_add_ward()
 
 
 func _night_tap(p: Vector2) -> void:
 	if selected == "":
 		return
 	if selected == "ward":
-		ward += Data.potions["ward"]["ward"]
-		_popup("Ward +%d" % Data.potions["ward"]["ward"], HUT + Vector2(0, -170), Data.magic)
-		_use_selected()
+		_add_ward()
 		return
 	# A free spot (empty, or its trap already burst) takes the bottle as a new trap.
 	# A spot still holding an unburst trap ignores the tap, so it can't be thrown by accident.
@@ -235,9 +429,18 @@ func _night_tap(p: Vector2) -> void:
 			if _slot_free(s):
 				s["trap"] = selected
 				s["triggered"] = false
+				_burst(s["pos"], Data.potions[selected]["color"], 8, 90.0)
 				_use_selected()
 			return
 	_spawn_area(selected, p)
+	_use_selected()
+
+
+func _add_ward() -> void:
+	ward += Data.potions["ward"]["ward"]
+	_popup("Ward +%d" % Data.potions["ward"]["ward"], HUT + Vector2(0, -170), Data.magic)
+	for p in _ward_points():
+		_burst(p, Data.magic, 5, 80.0)
 	_use_selected()
 
 
@@ -245,76 +448,394 @@ func _slot_free(s: Dictionary) -> bool:
 	return s["trap"] == "" or s["triggered"]
 
 
-func _draw() -> void:
-	var font := ThemeDB.fallback_font
-	var night := mode == "night"
-	draw_rect(Rect2(0, 0, 720, 1280), Color("1d1a33") if night else Color("3b3552"))
-	draw_circle(MOON, 46, Color(1, 0.97, 0.85, 0.9 if night else 0.35))
+# -------------------------------------------------------------- particles ---
 
-	for d in decor:
-		Art.mushroom(self, d["pos"], d["s"], d["color"], 0.55 if night else 0.8, night and d["color"] == Color("9ff0f0"))
+func _emit(pos: Vector2, vel: Vector2, life: float, size: float, color: Color, kind: String) -> void:
+	if particles.size() < 500:
+		particles.append({"pos": pos, "vel": vel, "life": life, "max": life, "size": size, "color": color, "kind": kind})
 
+
+func _burst(pos: Vector2, color: Color, count: int, speed: float) -> void:
+	for i in count:
+		_emit(pos, Vector2.from_angle(randf() * TAU) * randf_range(speed * 0.3, speed), randf_range(0.4, 0.8),
+			randf_range(2.0, 4.0), color, "spark")
+
+
+func _update_particles(delta: float) -> void:
+	smoke_timer -= delta
+	if smoke_timer <= 0.0:
+		smoke_timer = 0.3
+		_emit(Art.hut_chimney(HUT, HUT_SIZE), Vector2(randf_range(4, 12), randf_range(-28, -20)), 3.2, 7.0,
+			Color(0.75, 0.72, 0.82, 0.3), "smoke")
+	for a in areas:
+		if a["id"] == "spore" and randf() < 0.5:
+			var off := Vector2.from_angle(randf() * TAU) * randf() * float(a["radius"])
+			_emit(a["pos"] + off, Vector2(randf_range(-8, 8), randf_range(-22, -8)), 1.4, 2.5, Color("d9b8ff"), "mote")
+
+	for p in particles:
+		p["life"] -= delta
+		var v: Vector2 = p["vel"]
+		match p["kind"]:
+			"spark":
+				v *= 0.92
+			"puff":
+				v *= 0.9
+			"smoke":
+				v.x += 3.0 * delta
+		p["vel"] = v
+		p["pos"] += v * delta
+	particles = particles.filter(func(p): return p["life"] > 0.0)
+
+	for f in fireflies:
+		var v: Vector2 = f["vel"] + Vector2(randf_range(-40, 40), randf_range(-40, 40)) * delta
+		v = v.limit_length(22.0)
+		f["vel"] = v
+		var fp: Vector2 = f["pos"] + v * delta
+		f["pos"] = Vector2(wrapf(fp.x, 0.0, 720.0), wrapf(fp.y, 160.0, 1120.0))
+
+
+# ---------------------------------------------------------------- drawing ---
+
+## Blend a dusk colour toward its night version as night falls.
+func _c(dusk: Color, night: Color) -> Color:
+	return dusk.lerp(night, night_amt)
+
+
+func _area_strength(a: Dictionary) -> float:
+	var life: float = a["time"] / a["max"]
+	return minf(1.0, life * 3.0) * minf(1.0, (1.0 - life) * 8.0 + 0.2)
+
+
+func _hop(e: Dictionary) -> float:
+	if e["flee"] >= 0.0:
+		return 0.0
+	return absf(sin(t * 7.0 + e["seed"])) * 5.0
+
+
+func _ward_points() -> Array:
+	var pts := []
+	var center := HUT + Vector2(0, -40)
+	for k in 6:
+		var ang := -PI / 2.0 + 0.52 + k * TAU / 6.0
+		pts.append(center + Vector2(cos(ang) * 150.0, sin(ang) * 118.0))
+	return pts
+
+
+func _paint_ground(ci: CanvasItem) -> void:
+	var top := _c(Color("4b4868"), Color("1b1a34"))
+	var bottom := _c(Color("3f4d4b"), Color("131c25"))
+	ci.draw_polygon(PackedVector2Array([Vector2(0, 0), Vector2(720, 0), Vector2(720, 1280), Vector2(0, 1280)]),
+		PackedColorArray([top, top, bottom, bottom]))
+
+	var moss_col := _c(Color("5b7a5c"), Color("22382f"))
+	for m in moss:
+		ci.draw_colored_polygon(Art.ellipse(m["pos"], m["rx"], m["ry"], 20), Art.fade(moss_col, m["a"]))
+
+	_paint_pond(ci)
+
+	var stone_col := _c(Color("7a7688"), Color("3b3a4d"))
+	for s in stones:
+		var r: float = s["r"]
+		Art.shadow(ci, s["pos"] + Vector2(2, r * 0.5), r * 1.1, r * 0.4)
+		ci.draw_colored_polygon(Art.ellipse(s["pos"], r * 1.1, r * 0.8, 12), stone_col)
+		ci.draw_colored_polygon(Art.ellipse(s["pos"] + Vector2(-r * 0.3, -r * 0.3), r * 0.5, r * 0.3, 10), stone_col.lightened(0.2))
+
+	var edge := _c(Color("54463a"), Color("2c2530"))
+	var dirt := _c(Color("8a7458"), Color("584842"))
+	var worn := _c(Color("a08a6a"), Color("6a5850"))
 	for c in curves:
 		var pts := c.get_baked_points()
-		for k in range(0, pts.size(), 3):
-			draw_circle(pts[k], 34, Color("5e5040"))
-		for k in range(0, pts.size(), 3):
-			draw_circle(pts[k], 26, Color("7d6a52"))
+		for k in range(0, pts.size(), 2):
+			ci.draw_circle(pts[k], 42, edge)
+		for k in range(0, pts.size(), 2):
+			ci.draw_circle(pts[k], 35, dirt)
+		for k in range(0, pts.size(), 2):
+			ci.draw_circle(pts[k], 16, worn)
+	for pb in pebbles:
+		var r: float = pb["r"]
+		ci.draw_colored_polygon(Art.ellipse(pb["pos"], r * 1.2, r * 0.8, 10), stone_col.darkened(0.1))
+		ci.draw_circle(pb["pos"] + Vector2(-r * 0.3, -r * 0.3), r * 0.3, stone_col.lightened(0.25))
 
-	Art.hut(self, HUT, 160)
-	if hit_flash > 0.0:
-		draw_circle(HUT + Vector2(0, -60), 130, Color(1, 0.3, 0.3, hit_flash))
-	if ward > 0:
-		var pulse := 0.6 + 0.3 * sin(t * 4.0)
-		draw_arc(HUT + Vector2(0, -60), 135, 0, TAU, 64, Art.fade(Data.magic, pulse), 6)
+	var blade := _c(Color("7d9a66"), Color("2e4a3a"))
+	for g in grass:
+		var p: Vector2 = g["pos"]
+		var s: float = g["s"]
+		var lean: float = g["lean"]
+		ci.draw_line(p, p + Vector2(-5 + lean, -11) * s, blade, 2.0, true)
+		ci.draw_line(p, p + Vector2(lean, -15) * s, blade, 2.0, true)
+		ci.draw_line(p, p + Vector2(5 + lean, -10) * s, blade, 2.0, true)
 
+	var wood := _c(Color("6d5140"), Color("3d2e2c"))
+	for posts in fences:
+		for i in posts.size() - 1:
+			var a: Vector2 = posts[i]
+			var b: Vector2 = posts[i + 1]
+			ci.draw_line(a + Vector2(0, -16), b + Vector2(0, -16), wood, 4.0, true)
+			ci.draw_line(a + Vector2(0, -7), b + Vector2(0, -7), wood, 4.0, true)
+		for p in posts:
+			Art.shadow(ci, p + Vector2(0, 2), 7, 3)
+			ci.draw_rect(Rect2(p.x - 4, p.y - 24, 8, 26), wood.darkened(0.15))
+			ci.draw_rect(Rect2(p.x - 4, p.y - 24, 8, 4), wood.lightened(0.15))
+
+
+func _paint_pond(ci: CanvasItem) -> void:
+	ci.draw_colored_polygon(Art.ellipse(POND + Vector2(0, 4), 128, 68, 40), _c(Color("4a4b3e"), Color("1d2320")))
+	var water := _c(Color("46607e"), Color("15263f"))
+	ci.draw_colored_polygon(Art.ellipse(POND, 118, 58, 40), water)
+	ci.draw_colored_polygon(Art.ellipse(POND + Vector2(0, 8), 100, 44, 40), water.darkened(0.2))
+
+	var pad_col := _c(Color("5f8a58"), Color("2c4a38"))
+	for lp in [[Vector2(-70, 14), 16.0], [Vector2(62, -20), 13.0], [Vector2(84, 18), 10.0]]:
+		var c: Vector2 = POND + lp[0]
+		var r: float = lp[1]
+		var pad := PackedVector2Array([c])
+		for i in 15:
+			var ang := 0.45 + (TAU - 0.6) * i / 14.0
+			pad.append(c + Vector2(cos(ang) * r, sin(ang) * r * 0.7))
+		ci.draw_colored_polygon(pad, pad_col)
+	var flower := POND + Vector2(-72, 10)
+	for k in 5:
+		ci.draw_circle(flower + Vector2.from_angle(k * TAU / 5.0) * 4.0, 3.5, _c(Color("f3b3cf"), Color("b07a98")))
+	ci.draw_circle(flower, 2.5, Color("ffe08a"))
+
+	var reed := _c(Color("5f7a4c"), Color("25382c"))
+	for r in reeds:
+		var base: Vector2 = r["pos"]
+		var tip := base + Vector2(r["lean"], -r["h"])
+		ci.draw_line(base, tip, reed, 2.0, true)
+		ci.draw_colored_polygon(Art.ellipse(tip + Vector2(0, 6), 2.5, 6, 8), _c(Color("6d4a34"), Color("3a2a24")))
+
+
+func _paint_light_under(ci: CanvasItem) -> void:
+	var n := night_amt
+	var flicker := 0.9 + 0.1 * sin(t * 13.0) * sin(t * 7.3)
+	Art.glow(ci, HUT + Vector2(0, -20), 300, Art.fade(Data.lantern, (0.16 + 0.22 * n) * flicker))
+	for l in lanterns:
+		Art.glow(ci, Art.lantern_lamp(l, LANTERN_SIZE) + Vector2(0, 40), 150, Art.fade(Data.lantern, (0.1 + 0.22 * n) * flicker))
+	Art.glow(ci, POND + Vector2(22, -6), 110, Color(0.8, 0.85, 1.0, 0.05 + 0.12 * n))
+	for cl in clusters:
+		if cl["glow"]:
+			var pulse := 0.8 + 0.2 * sin(t * 2.0 + float(cl["pos"].x))
+			Art.glow(ci, cl["pos"] + Vector2(0, -15), 90, Art.fade(Data.magic, (0.05 + 0.22 * n) * pulse))
 	for s in slots:
-		if not _slot_free(s):
-			Art.bottle(self, s["pos"], 56, Data.potions[s["trap"]]["color"])
+		if _slot_free(s):
+			Art.glow(ci, s["pos"], 60, Art.fade(Data.magic, 0.08 + 0.04 * sin(t * 3.0)))
 		else:
-			var glow := 0.5 + 0.3 * sin(t * 3.0)
-			draw_arc(s["pos"], 36, 0, TAU, 40, Art.fade(Data.magic, glow * (0.6 if night else 1.0)), 4)
+			Art.glow(ci, s["pos"], 55, Art.fade(Data.potions[s["trap"]]["color"], 0.22))
+	for a in areas:
+		Art.glow(ci, a["pos"], a["radius"] * 1.4, Art.fade(Data.potions[a["id"]]["color"], 0.35 * _area_strength(a)))
+	if ward > 0:
+		Art.glow(ci, HUT + Vector2(0, -50), 230, Art.fade(Data.magic, 0.1 + 0.05 * sin(t * 4.0)))
+	if hit_flash > 0.0:
+		Art.glow(ci, HUT + Vector2(0, -60), 230, Color(1, 0.25, 0.2, hit_flash))
+
+
+func _paint_objects(ci: CanvasItem) -> void:
+	var n := night_amt
+	var font := ThemeDB.fallback_font
+
+	# Moon reflection with slow ripples.
+	var moon := POND + Vector2(22 + sin(t * 1.5) * 3.0, -6)
+	ci.draw_colored_polygon(Art.ellipse(moon, 26, 12, 24), Color(1, 0.97, 0.85, 0.3 + 0.45 * n))
+	for k in 2:
+		var rr := fmod(t * 12.0 + k * 20.0, 40.0)
+		Art.outline(ci, Art.ellipse(moon, 26 + rr, 12 + rr * 0.45, 32), Color(1, 0.97, 0.85, (1.0 - rr / 40.0) * 0.25), 1.5)
+
+	for cl in clusters:
+		for m in cl["shrooms"]:
+			Art.mushroom(ci, cl["pos"] + m["off"], m["s"], cl["color"])
+	for l in lanterns:
+		Art.lantern(ci, l, LANTERN_SIZE)
+
+	for i in slots.size():
+		var s: Dictionary = slots[i]
+		if _slot_free(s):
+			_paint_rune(ci, s["pos"])
+		else:
+			Art.shadow(ci, s["pos"] + Vector2(0, 14), 16, 5)
+			Art.bottle(ci, s["pos"] + Vector2(0, -10 + sin(t * 2.2 + i) * 3.0), 52, Data.potions[s["trap"]]["color"])
 
 	for a in areas:
-		var col: Color = Data.potions[a["id"]]["color"]
-		var life: float = a["time"] / a["max"]
-		var strength := minf(1.0, life * 3.0)
-		draw_circle(a["pos"], a["radius"], Art.fade(col, 0.3 * strength))
-		draw_arc(a["pos"], a["radius"], 0, TAU, 48, Art.fade(col, 0.8 * strength), 3)
+		if a["id"] == "syrup":
+			_paint_syrup(ci, a)
 
-	for e in enemies:
+	if ward > 0:
+		var ring := Art.ellipse(HUT + Vector2(0, -40), 150, 118, 64)
+		ci.draw_colored_polygon(ring, Art.fade(Data.magic, 0.06))
+		Art.outline(ci, ring, Art.fade(Data.magic, 0.5 + 0.25 * sin(t * 4.0)), 3.0)
+	Art.hut(ci, HUT, HUT_SIZE, t)
+	if ward > 0:
+		var pts := _ward_points()
+		for k in pts.size():
+			Art.crystal(ci, pts[k] + Vector2(0, sin(t * 2.0 + k) * 3.0), 34, Data.magic, 1.0 if k < ward else 0.3)
+
+	var order := enemies.duplicate()
+	order.sort_custom(func(a, b): return a["pos"].y < b["pos"].y)
+	for e in order:
 		var fade := 1.0 - maxf(0.0, e["flee"])
-		var wobble := sin(t * 10.0 + e["offset"] * 0.1) * 3.0
-		Art.creature(self, e["pos"] + Vector2(0, wobble), 40, fade)
+		var blink: bool = fmod(t + e["seed"], 3.2) < 0.12
+		var pos: Vector2 = e["pos"] + Vector2(0, -_hop(e))
+		Art.creature(ci, pos, CREATURE_SIZE, fade, t + e["seed"], blink)
 		if e["flee"] < 0.0 and e["courage"] < e["max"]:
 			var w: float = 40.0 * e["courage"] / e["max"]
-			draw_rect(Rect2(e["pos"].x - 20, e["pos"].y - 40, 40, 5), Color(0, 0, 0, 0.5))
-			draw_rect(Rect2(e["pos"].x - 20, e["pos"].y - 40, w, 5), Data.magic)
+			ci.draw_rect(Rect2(pos.x - 20, pos.y - 44, 40, 6), Color(0, 0, 0, 0.55))
+			ci.draw_rect(Rect2(pos.x - 20, pos.y - 44, w, 6), Data.magic)
+
+	for a in areas:
+		if a["id"] == "spore":
+			_paint_spore(ci, a)
+		elif a["id"] == "ember":
+			_paint_ember(ci, a)
+
+	for p in particles:
+		if p["kind"] == "smoke" or p["kind"] == "puff":
+			var f: float = p["life"] / p["max"]
+			var size: float = p["size"] * (1.0 + (1.0 - f) * 2.0)
+			Art.glow(ci, p["pos"], size * 2.0, Art.fade(p["color"], f))
 
 	for p in popups:
 		var pt: float = p["t"]
-		draw_string(font, p["pos"] + Vector2(-100, -pt * 50), p["text"], HORIZONTAL_ALIGNMENT_CENTER, 200, 28,
-			Art.fade(p["color"], 1.0 - pt))
+		var at: Vector2 = p["pos"] + Vector2(-100, -pt * 50)
+		ci.draw_string_outline(font, at, p["text"], HORIZONTAL_ALIGNMENT_CENTER, 200, 30, 6, Color(0, 0, 0, 0.6 * (1.0 - pt)))
+		ci.draw_string(font, at, p["text"], HORIZONTAL_ALIGNMENT_CENTER, 200, 30, Art.fade(p["color"], 1.0 - pt))
 
-	var status := "Tonight: %d creatures  ·  Ward %d" % [cfg["count"], ward]
-	if night:
-		status = "Hut %d/%d  ·  Ward %d  ·  Repelled %d/%d" % [maxi(hut_hp, 0), Data.HUT_HP, ward, repelled, cfg["count"]]
-	draw_rect(Rect2(0, 110, 720, 44), Color(0, 0, 0, 0.35))
-	draw_string(font, Vector2(0, 141), status, HORIZONTAL_ALIGNMENT_CENTER, 720, 22, Data.parchment)
 
-	# Bottle bar
-	draw_rect(Rect2(0, BAR_Y, 720, 1280 - BAR_Y), Color(0, 0, 0, 0.5))
+func _paint_rune(ci: CanvasItem, pos: Vector2) -> void:
+	var col := Art.fade(Data.magic, (0.55 if mode == "fortify" else 0.35) + 0.2 * sin(t * 3.0))
+	ci.draw_circle(pos, 32, Color(0.05, 0.1, 0.15, 0.3))
+	ci.draw_arc(pos, 32, 0, TAU, 40, col, 2.0, true)
+	for k in 6:
+		var ang := t * 0.8 + k * TAU / 6.0
+		ci.draw_arc(pos, 25, ang, ang + 0.55, 6, col, 3.0, true)
+	ci.draw_colored_polygon(PackedVector2Array([pos + Vector2(0, -8), pos + Vector2(6, 0), pos + Vector2(0, 8),
+		pos + Vector2(-6, 0)]), col)
+
+
+func _paint_syrup(ci: CanvasItem, a: Dictionary) -> void:
+	var s := _area_strength(a)
+	var col: Color = Data.potions["syrup"]["color"]
+	var r: float = a["radius"]
+	var sd: float = a["sd"]
+	var center: Vector2 = a["pos"]
+	var pts := PackedVector2Array()
+	for k in 24:
+		var ang := TAU * k / 24.0
+		var rr := r * (0.82 + 0.12 * sin(ang * 3.0 + sd) + 0.06 * sin(ang * 5.0 + sd * 2.0))
+		pts.append(center + Vector2(cos(ang), sin(ang) * 0.8) * rr)
+	ci.draw_colored_polygon(pts, Art.fade(col.darkened(0.15), 0.85 * s))
+	Art.outline(ci, pts, Art.fade(col.darkened(0.45), 0.8 * s), 2.0)
+	ci.draw_colored_polygon(Art.ellipse(center + Vector2(-r * 0.25, -r * 0.2), r * 0.3, r * 0.12, 16), Art.fade(col.lightened(0.45), 0.6 * s))
+	for k in 4:
+		var ph := fmod(t * 0.9 + k * 0.37 + sd, 1.0)
+		var bp := center + Vector2(cos(sd + k * 1.9), sin(sd + k * 1.9) * 0.7) * r * 0.5
+		ci.draw_arc(bp, 3.0 + ph * 6.0, 0, TAU, 12, Art.fade(col.lightened(0.5), (1.0 - ph) * s), 1.5, true)
+
+
+func _paint_spore(ci: CanvasItem, a: Dictionary) -> void:
+	var s := _area_strength(a)
+	var col: Color = Data.potions["spore"]["color"]
+	var r: float = a["radius"]
+	var sd: float = a["sd"]
+	var center: Vector2 = a["pos"]
+	Art.glow(ci, center, r * 1.1, Art.fade(col, 0.35 * s))
+	for k in 7:
+		var ang := sd + k * TAU / 7.0 + t * 0.35
+		var dist := r * (0.45 + 0.1 * sin(t * 1.7 + k))
+		Art.glow(ci, center + Vector2(cos(ang), sin(ang)) * dist, r * 0.55, Art.fade(col.lightened(0.15), 0.45 * s))
+	for k in 10:
+		var ang := sd * 2.0 + k * 2.4 + t * 0.6
+		var dist := r * 0.7 * fmod(k * 0.37 + t * 0.15, 1.0)
+		ci.draw_circle(center + Vector2(cos(ang), sin(ang)) * dist, 2.5, Art.fade(Color("f1e0ff"), 0.8 * s))
+
+
+func _paint_ember(ci: CanvasItem, a: Dictionary) -> void:
+	var life: float = a["time"] / a["max"]
+	var prog := 1.0 - life
+	var r: float = a["radius"]
+	var center: Vector2 = a["pos"]
+	Art.glow(ci, center, r * (0.6 + 0.6 * prog), Color(1, 0.6, 0.25, 0.7 * life))
+	ci.draw_arc(center, r * (0.3 + 0.8 * prog), 0, TAU, 48, Color(1, 0.8, 0.4, life), 10.0 * life + 1.0, true)
+	ci.draw_arc(center, r * (0.2 + 0.6 * prog), 0, TAU, 48, Color(1, 0.45, 0.2, life * 0.8), 5.0 * life + 1.0, true)
+
+
+func _paint_light_over(ci: CanvasItem) -> void:
+	var n := night_amt
+	for w in Art.hut_windows(HUT, HUT_SIZE):
+		Art.glow(ci, w, 45, Art.fade(Data.lantern, 0.3 + 0.25 * n))
+	Art.glow(ci, Art.hut_cauldron(HUT, HUT_SIZE), 40, Color(0.5, 1.0, 0.5, 0.2 + 0.2 * n))
+	for l in lanterns:
+		Art.glow(ci, Art.lantern_lamp(l, LANTERN_SIZE), 34, Color(1.0, 0.8, 0.45, 0.4 + 0.35 * n))
+	for i in slots.size():
+		var s: Dictionary = slots[i]
+		if not _slot_free(s):
+			Art.glow(ci, s["pos"] + Vector2(0, -6 + sin(t * 2.2 + i) * 3.0), 28, Art.fade(Data.potions[s["trap"]]["color"], 0.35))
+	for e in enemies:
+		var fade := 1.0 - maxf(0.0, e["flee"])
+		var pos: Vector2 = e["pos"] + Vector2(0, -_hop(e))
+		for side in [-1.0, 1.0]:
+			Art.glow(ci, pos + Vector2(side * CREATURE_SIZE * 0.17, -CREATURE_SIZE * 0.1), 11, Color(1, 0.85, 0.35, 0.45 * fade * n))
+	if ward > 0:
+		var pts := _ward_points()
+		for k in mini(ward, pts.size()):
+			Art.glow(ci, pts[k], 28, Art.fade(Data.magic, 0.45))
+	for f in fireflies:
+		var blink := 0.5 + 0.5 * sin(t * 3.0 + f["phase"])
+		Art.glow(ci, f["pos"], 16, Color(0.8, 1.0, 0.5, 0.5 * blink * (0.25 + 0.75 * n)))
+		Art.glow(ci, f["pos"], 4, Color(1, 1, 0.8, blink * (0.4 + 0.6 * n)))
+	for p in particles:
+		if p["kind"] == "spark" or p["kind"] == "mote":
+			var f: float = p["life"] / p["max"]
+			Art.glow(ci, p["pos"], p["size"] * 3.0, Art.fade(p["color"], f))
+
+
+func _paint_canopy(ci: CanvasItem) -> void:
+	var leaf := _c(Color("34463a"), Color("0f1719"))
+	var lit := _c(Color("46604c"), Color("172528"))
+	for tr in trees:
+		for b in tr["blobs"]:
+			ci.draw_circle(tr["pos"] + b["off"], b["r"], leaf)
+		for b in tr["blobs"]:
+			var r: float = b["r"]
+			ci.draw_circle(tr["pos"] + b["off"] + Vector2(-r * 0.2, -r * 0.25), r * 0.65, lit)
+	var edge := Color(0, 0, 0, 0.25 + 0.3 * night_amt)
+	var clear := Color(0, 0, 0, 0)
+	ci.draw_polygon(PackedVector2Array([Vector2(0, 110), Vector2(110, 110), Vector2(110, BAR_Y), Vector2(0, BAR_Y)]),
+		PackedColorArray([edge, clear, clear, edge]))
+	ci.draw_polygon(PackedVector2Array([Vector2(610, 110), Vector2(720, 110), Vector2(720, BAR_Y), Vector2(610, BAR_Y)]),
+		PackedColorArray([clear, edge, edge, clear]))
+
+
+func _paint_ui(ci: CanvasItem) -> void:
+	var font := ThemeDB.fallback_font
+	var rid := ci.get_canvas_item()
+	var status := Rect2(14, 118, 692, 44)
+	status_box.draw(rid, status)
+	if mode == "fortify":
+		ci.draw_string(font, Vector2(34, 148), "Night %d  ·  %d creatures coming" % [Data.day, cfg["count"]],
+			HORIZONTAL_ALIGNMENT_LEFT, -1, 22, Data.parchment)
+	else:
+		for i in Data.HUT_HP:
+			Art.heart(ci, Vector2(40 + i * 28, 140), 20, Color("ff7a6b") if i < hut_hp else Color(1, 1, 1, 0.15))
+		ci.draw_string(font, Vector2(470, 148), "Repelled %d/%d" % [repelled, cfg["count"]],
+			HORIZONTAL_ALIGNMENT_LEFT, -1, 22, Data.parchment)
+	var ward_x := 330.0 if mode == "night" else 620.0
+	Art.crystal(ci, Vector2(ward_x, 142), 24, Data.magic, 1.0 if ward > 0 else 0.35)
+	ci.draw_string(font, Vector2(ward_x + 16, 148), "x%d" % ward, HORIZONTAL_ALIGNMENT_LEFT, -1, 22, Data.parchment)
+
+	ci.draw_rect(Rect2(0, BAR_Y, 720, 1280 - BAR_Y), Color("1a1426"))
+	ci.draw_rect(Rect2(0, BAR_Y, 720, 3), Art.fade(Data.magic, 0.4))
 	for i in 4:
 		var id: String = Data.potion_order[i]
 		var info: Dictionary = Data.potions[id]
 		var n: int = Data.bottles[id]
-		var x := CELL_W * i
-		if selected == id:
-			draw_rect(Rect2(x + 6, BAR_Y + 6, CELL_W - 12, 1280 - BAR_Y - 12), Art.fade(Data.magic, 0.35))
 		var known: bool = Data.discovered.has(id)
-		Art.bottle(self, Vector2(x + CELL_W / 2, BAR_Y + 62), 70, info["color"] if known else Color("777777"),
+		var cell := Rect2(CELL_W * i + 8, BAR_Y + 10, CELL_W - 16, 130)
+		(cell_selected_box if selected == id else cell_box).draw(rid, cell)
+		Art.bottle(ci, Vector2(cell.get_center().x, BAR_Y + 64), 68, info["color"] if known else Color("6d6878"),
 			1.0 if n > 0 else 0.35)
-		draw_string(font, Vector2(x + CELL_W - 60, BAR_Y + 38), "x%d" % n, HORIZONTAL_ALIGNMENT_LEFT, -1, 24,
-			Data.parchment)
-		draw_string(font, Vector2(x, BAR_Y + 132), info["name"] if known else "???", HORIZONTAL_ALIGNMENT_CENTER,
-			CELL_W, 20, Data.parchment)
+		var badge := Vector2(cell.end.x - 24, BAR_Y + 32)
+		ci.draw_circle(badge, 16, Data.magic if n > 0 else Color(1, 1, 1, 0.12), true, -1.0, true)
+		ci.draw_string(font, badge + Vector2(-16, 7), str(n), HORIZONTAL_ALIGNMENT_CENTER, 32, 20,
+			Data.ink if n > 0 else Color(1, 1, 1, 0.4))
+		ci.draw_string(font, Vector2(cell.position.x, BAR_Y + 128), info["name"] if known else "???",
+			HORIZONTAL_ALIGNMENT_CENTER, cell.size.x, 19, Data.parchment if n > 0 else Color(1, 1, 1, 0.45))

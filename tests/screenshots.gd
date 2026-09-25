@@ -60,8 +60,21 @@ func _ready() -> void:
 	await shot("3_fortify")
 
 	main._on_action()
-	for i in 260:
+	# Skip the dusk-to-night fade so the shot shows full night.
+	def.night_amt = 1.0
+	def.ground_layer.queue_redraw()
+	def.canopy_layer.queue_redraw()
+	def.ward = 4
+	for i in 160:
 		def._night_step(0.05)
 	await frames(3)
 	await shot("4_night")
+
+	# Potions going off: a spore cloud, a syrup puddle and an ember burst.
+	if def.enemies.size() > 0:
+		def._spawn_area("spore", def.enemies[0]["pos"])
+	def._spawn_area("syrup", def.curves[1].sample_baked(300.0))
+	def._spawn_area("ember", def.curves[0].sample_baked(250.0))
+	await frames(12)
+	await shot("5_night_effects")
 	get_tree().quit()
