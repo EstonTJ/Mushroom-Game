@@ -18,43 +18,123 @@ var magic := Color("8bc5c3")
 var ink := Color("2b3329")
 
 # Real mushroom species, in unlock order. weight = how often it turns up on a
-# forage walk (Ghost Fungus is the rare one: at most one per walk). The facts are
-# shown when a mushroom is first found.
+# forage walk (Ghost Fungus is the rare one: at most one per walk). Names,
+# edibility, range, season, habitat, facts and lookalikes were checked against
+# the listed sources (2026-09-25); the first fact shows on the unlock screen and
+# everything shows in the Field Guide.
 var ingredient_order := ["puffball", "fly_agaric", "chanterelle", "ghost_fungus", "shaggy_ink_cap",
 	"scarlet_elf_cup", "turkey_tail", "amethyst_deceiver", "morel", "chicken_of_the_woods",
 	"indigo_milk_cap", "porcini", "parasol", "lions_mane", "bleeding_tooth"]
 var ingredients := {
 	"puffball": {"name": "Common Puffball", "short": "Puffball", "latin": "Lycoperdon perlatum", "color": Color("efe6cf"),
-		"weight": 3.0, "fact": "Squeeze a ripe one and a cloud of spores puffs out of the top."},
+		"weight": 3.0, "edibility": "Edible if an expert identifies it", "where": "Worldwide: Europe, Asia, Africa, Australia, New Zealand and the Americas",
+		"season": "Summer to autumn", "habitat": "On the ground in woodland leaf litter, grassy clearings, fields and gardens",
+		"facts": ["When it is ripe, a hole opens on top. Raindrops or a squeeze puff out a smoky cloud of spores.", "One puff can release more than a million spores."],
+		"lookalike": "Young deadly Amanitas (like the death cap) can look like puffball buttons; so can poisonous earthballs.",
+		"sources": ["https://en.wikipedia.org/wiki/Lycoperdon_perlatum", "https://www.first-nature.com/fungi/lycoperdon-perlatum.php"]},
 	"fly_agaric": {"name": "Fly Agaric", "short": "Fly Agaric", "latin": "Amanita muscaria", "color": Color("d8322a"),
-		"weight": 3.0, "fact": "The classic red-and-white toadstool of fairy tales. Poisonous."},
+		"weight": 3.0, "edibility": "Poisonous", "where": "Temperate and northern forests of Europe, Asia and North America",
+		"season": "Late summer to autumn", "habitat": "Under birch, pine and spruce, and also oak, fir and cedar",
+		"facts": ["Its name comes from an old trick: pieces were put in milk to kill flies.", "The white spots are leftovers of a skin that wrapped the baby mushroom. Rain can wash them off."],
+		"lookalike": "",
+		"sources": ["https://en.wikipedia.org/wiki/Amanita_muscaria", "https://www.first-nature.com/fungi/amanita-muscaria.php"]},
 	"chanterelle": {"name": "Chanterelle", "short": "Chanterelle", "latin": "Cantharellus cibarius", "color": Color("f0b23a"),
-		"weight": 3.0, "fact": "Golden and faintly apricot-scented, with wrinkly ridges instead of true gills."},
+		"weight": 3.0, "edibility": "Edible if an expert identifies it", "where": "Europe, from Scandinavia to the Mediterranean",
+		"season": "Summer to autumn", "habitat": "In broadleaf and conifer woods on acid soil, often with oak, chestnut or hazel",
+		"facts": ["Golden and faintly apricot-scented, with wrinkly ridges instead of true gills.", "It lives in partnership with trees, trading nutrients with their roots."],
+		"lookalike": "The poisonous jack-o'-lantern mushroom; also the false chanterelle, which has true gills.",
+		"sources": ["https://en.wikipedia.org/wiki/Cantharellus_cibarius", "https://www.first-nature.com/fungi/cantharellus-cibarius.php"]},
 	"ghost_fungus": {"name": "Ghost Fungus", "short": "Ghost", "latin": "Omphalotus nidiformis", "color": Color("c8f5d8"),
-		"weight": 0.0, "fact": "Really glows green in the dark (bioluminescence). Poisonous."},
+		"weight": 0.0, "edibility": "Poisonous", "where": "Southern Australia and Tasmania",
+		"season": "Autumn and winter", "habitat": "In clusters on pine stumps, at the base of living gum trees and on dead wood",
+		"facts": ["Its gills glow a ghostly green in the dark. One person said it was bright enough to read a watch by.", "Some Aboriginal peoples called it chinga, meaning spirit."],
+		"lookalike": "Edible oyster mushrooms. People have been poisoned after mistaking ghost fungus for them.",
+		"sources": ["https://en.wikipedia.org/wiki/Omphalotus_nidiformis", "https://www.environment.sa.gov.au/goodliving/posts/2018/05/ghost-mushrooms", "https://fungimap.org.au/omphalotus-nidiformis-ghost-fungus/"]},
 	"shaggy_ink_cap": {"name": "Shaggy Ink Cap", "short": "Ink Cap", "latin": "Coprinus comatus", "color": Color("f2efe8"),
-		"weight": 2.0, "fact": "Within a day of picking it dissolves itself into black ink, once used for writing."},
+		"weight": 2.0, "edibility": "Edible if an expert identifies it", "where": "Across the Northern Hemisphere; brought to Australia and New Zealand",
+		"season": "Spring to autumn, mostly summer and autumn", "habitat": "Lawns, grass verges, path edges, gravel and open woodland",
+		"facts": ["Within hours of being picked, it turns black and melts into an inky goo full of spores.", "Its shaggy white cap looks like an old-fashioned lawyer's wig, one of its nicknames."],
+		"lookalike": "The poisonous magpie ink cap.",
+		"sources": ["https://en.wikipedia.org/wiki/Coprinus_comatus", "https://www.first-nature.com/fungi/coprinus-comatus.php"]},
 	"scarlet_elf_cup": {"name": "Scarlet Elf Cup", "short": "Elf Cup", "latin": "Sarcoscypha austriaca", "color": Color("e0283a"),
-		"weight": 2.0, "fact": "Bright red cups that appear on mossy fallen twigs in the middle of winter."},
+		"weight": 2.0, "edibility": "Inedible", "where": "Europe and northeastern North America",
+		"season": "Winter to early spring", "habitat": "On rotting hardwood twigs and branches half-buried in moss, in damp shady places",
+		"facts": ["Its bright red cups pop up in winter and early spring, on rotting twigs hidden in moss.", "Its twin, the ruby elf cup, looks the same. You need a microscope to tell them apart!"],
+		"lookalike": "",
+		"sources": ["https://en.wikipedia.org/wiki/Sarcoscypha_austriaca", "https://www.first-nature.com/fungi/sarcoscypha-austriaca.php"]},
 	"turkey_tail": {"name": "Turkey Tail", "short": "Turkey Tail", "latin": "Trametes versicolor", "color": Color("a8845c"),
-		"weight": 2.0, "fact": "Grows in stripy bands of colour, like a turkey's fanned-out tail."},
+		"weight": 2.0, "edibility": "Inedible", "where": "Worldwide",
+		"season": "All year, best in autumn and winter", "habitat": "In overlapping layers on dead hardwood logs and stumps, such as beech and oak",
+		"facts": ["Its stripy bands of colour look like a turkey's fanned tail. Versicolor means of several colours.", "Too tough to eat, but scientists study it as a possible medicine."],
+		"lookalike": "",
+		"sources": ["https://en.wikipedia.org/wiki/Trametes_versicolor", "https://www.first-nature.com/fungi/trametes-versicolor.php"]},
 	"amethyst_deceiver": {"name": "Amethyst Deceiver", "short": "Deceiver", "latin": "Laccaria amethystina", "color": Color("8a4fc8"),
-		"weight": 2.0, "fact": "Vivid purple when fresh, but it fades as it ages and becomes hard to recognise."},
+		"weight": 2.0, "edibility": "Edible if an expert identifies it", "where": "Temperate Europe, Asia, and North and South America",
+		"season": "Summer to early winter", "habitat": "In leaf litter in all kinds of woodland, especially under beech",
+		"facts": ["Bright purple when fresh, but it fades as it dries or ages. That is why it is called a deceiver.", "It is a tree partner, especially of beech, trading nutrients with the tree's roots."],
+		"lookalike": "The lilac bonnet, which contains a toxin called muscarine.",
+		"sources": ["https://en.wikipedia.org/wiki/Laccaria_amethystina", "https://www.first-nature.com/fungi/laccaria-amethystina.php"]},
 	"morel": {"name": "Morel", "short": "Morel", "latin": "Morchella esculenta", "color": Color("b8935a"),
-		"weight": 1.5, "fact": "Its honeycomb-pitted cap is completely hollow inside."},
+		"weight": 1.5, "edibility": "Edible only when cooked", "where": "Europe, also reported from Asia; other morel species grow in North America",
+		"season": "Spring", "habitat": "On chalky soil under broadleaf trees such as ash, elm and apple",
+		"facts": ["Its honeycomb-pitted cap and its stem are both hollow inside.", "Morels are poisonous raw. They must always be cooked well before anyone eats them."],
+		"lookalike": "The deadly poisonous false morel, which has a brain-like, not pitted, cap.",
+		"sources": ["https://en.wikipedia.org/wiki/Morchella_esculenta", "https://www.first-nature.com/fungi/morchella-esculenta.php"]},
 	"chicken_of_the_woods": {"name": "Chicken of the Woods", "short": "Chicken", "latin": "Laetiporus sulphureus", "color": Color("f5902a"),
-		"weight": 1.5, "fact": "Bright orange-yellow shelves on tree trunks, also called the sulphur shelf."},
+		"weight": 1.5, "edibility": "Edible only when cooked", "where": "Europe and North America",
+		"season": "Summer to autumn", "habitat": "On dead or dying hardwood trees such as oak, sweet chestnut, beech, cherry and willow; also on yew",
+		"facts": ["Also called the sulphur shelf, it grows in bright orange-yellow tiers on tree trunks.", "Some people say it tastes like chicken, which is how it got its name."],
+		"lookalike": "Never eat one growing on a yew tree, which is poisonous; also the giant polypore.",
+		"sources": ["https://en.wikipedia.org/wiki/Laetiporus_sulphureus", "https://www.first-nature.com/fungi/laetiporus-sulphureus.php"]},
 	"indigo_milk_cap": {"name": "Indigo Milk Cap", "short": "Milk Cap", "latin": "Lactarius indigo", "color": Color("4a6ad0"),
-		"weight": 1.5, "fact": "Oozes blue milk when it is cut or broken."},
+		"weight": 1.5, "edibility": "Edible if an expert identifies it", "where": "Southern and eastern North America, Mexico and Guatemala",
+		"season": "Summer to autumn, in the rainy season", "habitat": "In oak and pine forests",
+		"facts": ["When cut, it oozes indigo-blue milk that slowly turns green in the air.", "Its blue colour comes from a special chemical found in no other mushroom."],
+		"lookalike": "",
+		"sources": ["https://en.wikipedia.org/wiki/Lactarius_indigo"]},
 	"porcini": {"name": "Porcini", "short": "Porcini", "latin": "Boletus edulis", "color": Color("8a5a32"),
-		"weight": 3.5, "fact": "Has a spongy layer of tiny pores under its cap instead of gills. Also called the penny bun."},
+		"weight": 3.5, "edibility": "Edible if an expert identifies it", "where": "Northern Hemisphere: Europe, Asia and North America, south to Mexico",
+		"season": "Summer to autumn", "habitat": "Under pine, spruce, fir and hemlock, and under oak and beech",
+		"facts": ["Has a spongy layer of tiny pores under its cap instead of gills. Also called the penny bun.", "Big ones can weigh more than 3 kilograms!"],
+		"lookalike": "The poisonous devil's bolete (red stem, bruises blue); also the very bitter bitter bolete.",
+		"sources": ["https://en.wikipedia.org/wiki/Boletus_edulis"]},
 	"parasol": {"name": "Parasol", "short": "Parasol", "latin": "Macrolepiota procera", "color": Color("c8a878"),
-		"weight": 1.5, "fact": "Its cap can grow as wide as a dinner plate, on a stem with a snakeskin pattern."},
+		"weight": 1.5, "edibility": "Edible if an expert identifies it", "where": "Temperate Europe and Asia; also reported from North America",
+		"season": "Summer to autumn", "habitat": "In pastures, grassy woodland clearings and sand dunes, sometimes in fairy rings",
+		"facts": ["Its cap can grow up to 25 cm wide, about the size of a dinner plate.", "Its tall stem has a snakeskin pattern and a ring you can slide up and down."],
+		"lookalike": "The poisonous green-spored parasol; also deadly Amanitas and small Lepiotas.",
+		"sources": ["https://en.wikipedia.org/wiki/Macrolepiota_procera", "https://www.first-nature.com/fungi/macrolepiota-procera.php"]},
 	"lions_mane": {"name": "Lion's Mane", "short": "Lion's Mane", "latin": "Hericium erinaceus", "color": Color("f5efe0"),
-		"weight": 1.0, "fact": "Grows as a cascade of soft, white, icicle-like spines instead of a cap."},
+		"weight": 1.0, "edibility": "Edible if an expert identifies it", "where": "North America, Europe and Asia",
+		"season": "Late summer to winter", "habitat": "On dead or dying hardwood trees, especially beech, oak and maple",
+		"facts": ["Grows as a cascade of soft, white, icicle-like spines instead of a cap.", "It is rare in Britain and protected by law there, so it must not be picked."],
+		"lookalike": "",
+		"sources": ["https://en.wikipedia.org/wiki/Hericium_erinaceus", "https://www.first-nature.com/fungi/hericium-erinaceus.php"]},
 	"bleeding_tooth": {"name": "Bleeding Tooth", "short": "Bl. Tooth", "latin": "Hydnellum peckii", "color": Color("c82838"),
-		"weight": 1.0, "fact": "Young ones ooze bright red droplets, like strawberry jam on cream."},
+		"weight": 1.0, "edibility": "Inedible", "where": "North America and Europe (in Britain, only Scotland); also Iran and Korea",
+		"season": "Late summer to autumn", "habitat": "On mossy soil under conifers, especially pine and spruce",
+		"facts": ["Young ones ooze bright red droplets, so it is nicknamed strawberries and cream.", "Under its cap are little teeth, not gills. It tastes fiery hot, so it is not for eating!"],
+		"lookalike": "",
+		"sources": ["https://en.wikipedia.org/wiki/Hydnellum_peckii", "https://www.first-nature.com/fungi/hydnellum-peckii.php"]},
 }
+
+# "Did you know?" facts about the fungi kingdom (Field Guide and unlock screen).
+# Sources: Wikipedia articles Fungus, Mushroom, Mycorrhiza, Armillaria ostoyae,
+# Saccharomyces cerevisiae, Penicillin and Lichen (checked 2026-09-25).
+var kingdom_facts := [
+	"Fungi are more closely related to animals than to plants.",
+	"Fungi cannot make food from sunlight like plants do. They soak up food from around them.",
+	"Fungi build their cell walls from chitin, not the cellulose that plants use.",
+	"A mushroom is just the fruiting body of a fungus. Its job is to make and spread spores.",
+	"The main body of a fungus is mycelium: a hidden web of tiny threads called hyphae.",
+	"Fungi are nature's main recyclers. They break down dead things so nutrients can be used again.",
+	"About 80% of plant species team up with fungi on their roots, trading sugar for water and nutrients.",
+	"A honey fungus in Oregon, USA, covers about 9 square kilometres and is thousands of years old.",
+	"Only about 148,000 kinds of fungi have been named, but there may be 2.2 to 3.8 million.",
+	"Baker's yeast is a tiny fungus. The gas it makes is what makes bread dough rise.",
+	"In 1928 Alexander Fleming saw a mould killing germs. This led to penicillin, a life-saving medicine.",
+	"A lichen is a team: a fungus living together with algae or cyanobacteria.",
+]
 
 # Potions. recipes: pairs of mushrooms, in either order; any other pair makes
 # sludge. family decides behaviour and look:
@@ -206,6 +286,18 @@ func take_snapshot() -> void:
 func restore_snapshot() -> void:
 	inventory = _snapshot["inventory"].duplicate()
 	bottles = _snapshot["bottles"].duplicate()
+
+
+## Badge colour for an edibility label: green edible, amber cook first,
+## brown inedible, red poisonous.
+func edibility_color(label: String) -> Color:
+	if label.begins_with("Poison") or label.begins_with("Deadly"):
+		return Color("c8402a")
+	if label.contains("cooked"):
+		return Color("c88a2a")
+	if label.begins_with("Inedible"):
+		return Color("8a7a60")
+	return Color("4f8a44")
 
 
 func recipe_for(a: String, b: String) -> String:

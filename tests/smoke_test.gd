@@ -70,6 +70,15 @@ func _ready() -> void:
 			if not (Data.ingredients.has(r[0]) and Data.ingredients.has(r[1])):
 				every_pair_unique = false
 	check(every_pair_unique, "every recipe uses real mushroom ids and no pair makes two potions")
+	var complete := true
+	for id in Data.ingredient_order:
+		var info: Dictionary = Data.ingredients[id]
+		for key in ["name", "latin", "edibility", "where", "season", "habitat"]:
+			if str(info.get(key, "")) == "":
+				complete = false
+		if info.get("facts", []).size() != 2 or info.get("sources", []).size() < 1:
+			complete = false
+	check(complete and Data.kingdom_facts.size() == 12, "every mushroom has a full, sourced Field Guide entry; 12 fungi facts")
 
 	# --- One full day, played through the screens ----------------------------
 	var main = load("res://main.tscn").instantiate()
@@ -82,6 +91,22 @@ func _ready() -> void:
 	main._on_action()
 	await frames(2)
 	check(main.phase == "forage" and Data.unlock_seen == 1, "Start day goes to the forest")
+
+	# Field Guide: pauses the game, opens pages for found mushrooms only.
+	main.open_guide()
+	var guide = main.guide
+	check(get_tree().paused and guide.visible and guide.found_count() == 3, "the Field Guide opens, pauses the game and shows 3 found")
+	guide.tap(guide.tile_rect(Data.ingredient_order.find("ghost_fungus")).get_center())
+	check(guide.page == "", "a locked mushroom has no page yet")
+	guide.tap(guide.tile_rect(Data.ingredient_order.find("fly_agaric")).get_center())
+	check(guide.page == "fly_agaric", "tapping a found mushroom opens its page")
+	await frames(2)
+	guide.tap(guide.BACK.get_center())
+	var before_fact: int = guide.fact_index
+	guide.tap(guide.FACT_BOX.get_center())
+	check(guide.page == "" and (Data.kingdom_facts.size() < 2 or guide.fact_index != before_fact), "Back returns to the grid; tapping the fact box shows another")
+	guide.tap(guide.CLOSE.get_center())
+	check(not get_tree().paused and not guide.visible, "closing the Field Guide unpauses the game")
 	var forage = main.phase_node
 	var only_unlocked := true
 	for it in forage.items:

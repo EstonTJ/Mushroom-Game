@@ -79,3 +79,24 @@ Godot --path . --quit-after 2000 res://tests/screenshots.tscn -- /path/to/folder
 
 The first export of any kind needs Godot's export templates
 (Editor > Manage Export Templates; for web, only "Web Single-Threaded").
+
+## Mushroom facts and sources
+
+Every mushroom in the game is a real species. Names, Latin names, edibility,
+range, season, habitat, facts and dangerous lookalikes (shown in the Field
+Guide and on the unlock screen) were checked on 2026-09-25 against the sources
+listed per species in `scripts/data.gd`, mainly Wikipedia, First Nature
+(first-nature.com), Fungimap and the South Australian Department for
+Environment. The "Did you know?" fungi facts come from the Wikipedia articles
+Fungus, Mushroom, Mycorrhiza, Armillaria ostoyae, Saccharomyces cerevisiae,
+Penicillin and Lichen. Notes from the check:
+
+- Latin names follow current usage for Europe. North American golden
+  chanterelles, morels and chickens of the woods are now separate species.
+- Morels and Chicken of the Woods are poisonous raw; Chicken of the Woods on
+  yew should never be eaten. Lion's Mane is protected by law in Britain.
+- Most sources say Ghost Fungus glows green; Fungimap says white.
+- No reliable source was found for the Indigo Milk Cap's season outside Mexico.
+
+The game says it on every unlock card and Guide page: real wild mushrooms can
+be deadly, so never eat one you find.

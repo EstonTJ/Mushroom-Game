@@ -6,6 +6,7 @@ const Forage = preload("res://scripts/forage.gd")
 const Brew = preload("res://scripts/brew.gd")
 const Defense = preload("res://scripts/defense.gd")
 const Unlock = preload("res://scripts/unlock.gd")
+const Guide = preload("res://scripts/guide.gd")
 
 var phase := ""
 var phase_node = null
@@ -13,6 +14,8 @@ var title: Label
 var hint: Label
 var action_btn: Button
 var action := Callable()
+var guide_btn: Button
+var guide
 
 
 func _ready() -> void:
@@ -39,7 +42,7 @@ func _build_hud() -> void:
 
 	hint = Label.new()
 	hint.position = Vector2(24, 56)
-	hint.size = Vector2(480, 50)
+	hint.size = Vector2(370, 50)
 	hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	hint.add_theme_font_size_override("font_size", 18)
 	hint.add_theme_color_override("font_color", Data.magic)
@@ -51,6 +54,33 @@ func _build_hud() -> void:
 	action_btn.add_theme_font_size_override("font_size", 24)
 	action_btn.pressed.connect(_on_action)
 	layer.add_child(action_btn)
+
+	guide_btn = Button.new()
+	guide_btn.text = "Guide"
+	guide_btn.position = Vector2(404, 26)
+	guide_btn.size = Vector2(104, 58)
+	guide_btn.add_theme_font_size_override("font_size", 22)
+	guide_btn.pressed.connect(open_guide)
+	layer.add_child(guide_btn)
+
+	var guide_layer := CanvasLayer.new()
+	guide_layer.layer = 20
+	guide_layer.process_mode = Node.PROCESS_MODE_ALWAYS
+	add_child(guide_layer)
+	guide = Guide.new()
+	guide.visible = false
+	guide.closed.connect(_on_guide_closed)
+	guide_layer.add_child(guide)
+
+
+## Opens the Field Guide and pauses the game until it's closed.
+func open_guide(on_page: String = "") -> void:
+	guide.open(on_page)
+	get_tree().paused = true
+
+
+func _on_guide_closed() -> void:
+	get_tree().paused = false
 
 
 func _on_action() -> void:

@@ -206,7 +206,11 @@ func _build_scenery() -> void:
 	lanterns.append(_beside(curves[1], 0.24, 1.0, 62.0))
 	lanterns.append(_beside(curves[1], 0.70, -1.0, 62.0))
 
-	var cols := [Color("b58fd6"), Color("d9623b"), Color("9ff0f0"), Color("e0a441"), Color("e98bb0")]
+	# Decorative clusters are real ground-growing species the player has
+	# unlocked (bracket and twig fungi are left out: they grow on wood).
+	var ground := ["puffball", "fly_agaric", "chanterelle", "ghost_fungus", "shaggy_ink_cap", "amethyst_deceiver",
+		"morel", "indigo_milk_cap", "porcini", "parasol"]
+	var species: Array = ground.filter(func(id): return Data.is_unlocked(id))
 	while clusters.size() < 16:
 		var p := Vector2(rng.randf_range(70, 650), rng.randf_range(190, 1080))
 		if _near_path(p, 75.0) or _in_pond(p, 40.0) or p.distance_to(HUT) < 200.0:
@@ -220,13 +224,13 @@ func _build_scenery() -> void:
 				crowded = true
 		if crowded:
 			continue
-		var color: Color = cols[rng.randi() % cols.size()]
+		var kind: String = species[rng.randi() % species.size()]
 		var shrooms := []
 		for k in rng.randi_range(1, 3):
 			var off := Vector2.ZERO if k == 0 else Vector2(rng.randf_range(-26, 26), rng.randf_range(-10, 14))
 			shrooms.append({"off": off, "s": rng.randf_range(30, 60) * (1.0 if k == 0 else 0.6)})
 		shrooms.sort_custom(func(a, b): return a["off"].y < b["off"].y)
-		clusters.append({"pos": p, "color": color, "glow": color == Color("9ff0f0"), "shrooms": shrooms})
+		clusters.append({"pos": p, "kind": kind, "glow": kind == "ghost_fungus", "shrooms": shrooms})
 	clusters.sort_custom(func(a, b): return a["pos"].y < b["pos"].y)
 
 	var y := 190.0
@@ -809,7 +813,7 @@ func _paint_objects(ci: CanvasItem) -> void:
 
 	for cl in clusters:
 		for m in cl["shrooms"]:
-			Art.mushroom(ci, cl["pos"] + m["off"], m["s"], cl["color"])
+			Art.ingredient(ci, cl["kind"], cl["pos"] + m["off"], m["s"])
 	for l in lanterns:
 		Art.lantern(ci, l, LANTERN_SIZE)
 

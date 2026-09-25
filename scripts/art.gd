@@ -568,7 +568,7 @@ static func _stumpling(ci: CanvasItem, pos: Vector2, s: float, a: float, t: floa
 	outline(ci, ellipse(top, s * 0.12, s * 0.04, 12), fade(Color("9a7448"), a), 1.5)
 	outline(ci, ellipse(top, s * 0.4, s * 0.12, 24), bark_dark, line_w)
 	ci.draw_colored_polygon(ellipse(top + Vector2(-s * 0.22, s * 0.03), s * 0.16, s * 0.06, 12), fade(Color("6f9a4a"), a))
-	mushroom(ci, top + Vector2(s * 0.18, -s * 0.01), s * 0.24, Color("d9623b"), a)
+	_fly_agaric(ci, top + Vector2(s * 0.18, -s * 0.01), s * 0.24, a)
 
 	var face := pos + Vector2(0, -s * 0.08)
 	for side in [-1.0, 1.0]:
@@ -850,8 +850,6 @@ static func hut(ci: CanvasItem, pos: Vector2, s: float, t: float = 0.0, broken: 
 	ci.draw_circle(tip + Vector2(s * 0.025, -s * 0.185), s * 0.047, Color("2e1c28"))
 	sparkle(ci, tip + Vector2(s * 0.08, -s * 0.2), s * 0.03, Color("f0d890"))
 
-	# A mushroom growing on the roof edge.
-	mushroom(ci, P.call(-0.62, -0.4), s * 0.2, Color("b58fd6"))
 
 	# Damage on the walls, rubble and soot.
 	if broken >= 1:
@@ -873,8 +871,8 @@ static func hut(ci: CanvasItem, pos: Vector2, s: float, t: float = 0.0, broken: 
 	ci.draw_colored_polygon(ellipse(cc + Vector2(0, -s * 0.06), s * 0.1, s * 0.035, 16), Color("3d3837"))
 	ci.draw_colored_polygon(ellipse(cc + Vector2(0, -s * 0.06), s * 0.08, s * 0.025, 16),
 		Color("7fd67a").lightened(0.1 * sin(t * 3.0)))
-	mushroom(ci, P.call(0.62, 0.3), s * 0.14, Color("e98bb0"))
-	mushroom(ci, P.call(0.68, 0.32), s * 0.1, Color("e98bb0"))
+	_fly_agaric(ci, P.call(0.6, 0.31), s * 0.16, 1.0)
+	ingredient(ci, "amethyst_deceiver", P.call(0.69, 0.33), s * 0.11)
 
 
 ## Points along a quadratic curve from a to b bending toward ctrl.

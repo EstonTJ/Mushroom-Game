@@ -133,4 +133,21 @@ func _ready() -> void:
 	late._hit_obstacle(late.obstacles[1])
 	await frames(40)
 	await shot("5_forage_late")
+
+	# Field Guide: the grid with everything found, then a page with a lookalike warning.
+	var Guide = load("res://scripts/guide.gd")
+	var layer := CanvasLayer.new()
+	layer.layer = 20
+	add_child(layer)
+	var g = Guide.new()
+	layer.add_child(g)
+	g.open()
+	await frames(4)
+	await shot("8_guide_grid")
+	g.open("morel")
+	await frames(20)
+	await shot("9_guide_morel")
+	g.open("lions_mane")
+	await frames(20)
+	await shot("9_guide_lions_mane")
 	get_tree().quit()

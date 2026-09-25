@@ -7,7 +7,7 @@ extends Node2D
 const Art = preload("res://scripts/art.gd")
 
 const CARD := Rect2(40, 222, 640, 830)
-const SHOW := Vector2(360, 560)
+const SHOW := Vector2(360, 525)
 const SAFETY := "Real wild mushrooms can be deadly. Never eat one you find."
 
 var ids: Array = []
@@ -125,28 +125,35 @@ func _draw() -> void:
 		Art.ingredient(self, id, show + Vector2(0, 8 + sin(t * 2.0) * 3.0), size, a)
 
 	# Name, Latin name, rarity.
-	var y := card.position.y + 510.0
+	var y := card.position.y + 468.0
 	draw_string(font, Vector2(card.position.x, y), info["name"], HORIZONTAL_ALIGNMENT_CENTER, card.size.x, 42, Art.fade(Data.ink, a))
 	draw_string(font, Vector2(card.position.x, y + 36), info["latin"], HORIZONTAL_ALIGNMENT_CENTER, card.size.x, 22,
 		Art.fade(Color("6a5a48"), a))
 	var r := rarity(id)
 	var label: String = r[0]
 	var stars_n: int = r[1]
+	var ed: String = info.get("edibility", "")
 	var lw := font.get_string_size(label, HORIZONTAL_ALIGNMENT_LEFT, -1, 20).x
-	var rx := card.get_center().x - (lw + stars_n * 26.0 + 10.0) / 2.0
+	var ew := font.get_string_size(ed, HORIZONTAL_ALIGNMENT_LEFT, -1, 20).x
+	var row_w := lw + stars_n * 26.0 + 10.0 + (40.0 + ew if ed != "" else 0.0)
+	var rx := card.get_center().x - row_w / 2.0
 	draw_string(font, Vector2(rx, y + 76), label, HORIZONTAL_ALIGNMENT_LEFT, -1, 20, Art.fade(Color("8a6242"), a))
 	for k in stars_n:
 		Art.sparkle(self, Vector2(rx + lw + 22 + k * 26, y + 69), 10.0, Art.fade(Color("e0a030"), a))
+	if ed != "":
+		var ex := rx + lw + stars_n * 26.0 + 30.0
+		draw_circle(Vector2(ex, y + 69), 4, Art.fade(Data.ink, 0.4 * a))
+		draw_string(font, Vector2(ex + 16, y + 76), ed, HORIZONTAL_ALIGNMENT_LEFT, -1, 20, Art.fade(Data.edibility_color(ed), a))
 
 	# The fact.
 	draw_line(Vector2(card.position.x + 60, y + 100), Vector2(card.end.x - 60, y + 100), Art.fade(Data.ink, 0.15 * a), 2.0)
-	draw_multiline_string(font, Vector2(card.position.x + 50, y + 140), info["fact"], HORIZONTAL_ALIGNMENT_CENTER, card.size.x - 100,
-		25, 4, Art.fade(Data.ink, 0.9 * a))
+	draw_multiline_string(font, Vector2(card.position.x + 50, y + 138), info["facts"][0], HORIZONTAL_ALIGNMENT_CENTER, card.size.x - 100,
+		23, 3, Art.fade(Data.ink, 0.9 * a))
 
 	# A new potion it makes possible, kept a mystery.
 	var brews := new_brews()
 	if not brews.is_empty():
-		var by := y + 250.0
+		var by := y + 276.0
 		var tw := font.get_string_size("New brew possible:", HORIZONTAL_ALIGNMENT_LEFT, -1, 21).x
 		var bx := card.get_center().x - (tw + 10.0 + brews.size() * 44.0) / 2.0
 		draw_string(font, Vector2(bx, by), "New brew possible:", HORIZONTAL_ALIGNMENT_LEFT, -1, 21, Art.fade(Color("7a3a2a"), a))
@@ -157,6 +164,15 @@ func _draw() -> void:
 
 	draw_string(font, Vector2(card.position.x, card.end.y - 28), SAFETY, HORIZONTAL_ALIGNMENT_CENTER, card.size.x, 17,
 		Art.fade(Color("b0413e"), a))
+
+	# A fungi-kingdom fact under the card, a different one each day.
+	if Data.kingdom_facts.size() > 0:
+		var fact: String = Data.kingdom_facts[(Data.day - 1 + index) % Data.kingdom_facts.size()]
+		var fy := card.end.y + (78.0 if ids.size() > 1 else 56.0)
+		draw_string_outline(font, Vector2(40, fy), "Did you know?", HORIZONTAL_ALIGNMENT_CENTER, 640, 22, 6, Color(0, 0, 0, 0.5 * a))
+		draw_string(font, Vector2(40, fy), "Did you know?", HORIZONTAL_ALIGNMENT_CENTER, 640, 22, Art.fade(Color("ffd35a"), a))
+		draw_multiline_string_outline(font, Vector2(50, fy + 32), fact, HORIZONTAL_ALIGNMENT_CENTER, 620, 20, 3, 6, Color(0, 0, 0, 0.55 * a))
+		draw_multiline_string(font, Vector2(50, fy + 32), fact, HORIZONTAL_ALIGNMENT_CENTER, 620, 20, 3, Art.fade(Color.WHITE, a))
 
 	# One dot per new mushroom when there are several.
 	if ids.size() > 1:
