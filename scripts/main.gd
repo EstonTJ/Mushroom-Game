@@ -16,13 +16,40 @@ var action_btn: Button
 var action := Callable()
 var guide_btn: Button
 var guide
+var diag_timer := 0.0
 
 
 func _ready() -> void:
+	# 120 Hz phones would otherwise draw twice as often as this game needs.
+	if OS.has_feature("web"):
+		Engine.max_fps = 60
 	_build_hud()
+	var last := Data.take_last_diag()
 	if not Data.load_game():
 		Data.reset_game()
-	_begin_day()
+		_begin_day()
+		return
+	# Resume where the save was made: the forest, the cauldron or fortifying.
+	match Data.saved_phase:
+		"brew":
+			_enter_brew()
+		"fortify":
+			_enter_fortify()
+		_:
+			_begin_day()
+	var note := "Welcome back! Resumed day %d." % Data.day
+	if not last.is_empty():
+		note = "Resumed day %d. Last session stopped on day %d, %s (%d fps)." % [Data.day, int(last.get("day", 0)),
+			str(last.get("phase", "?")), int(last.get("fps", 0))]
+	hint.text = note
+
+
+## Every 2 seconds, note where the game is (browser only) for crash reports.
+func _process(delta: float) -> void:
+	diag_timer -= delta
+	if diag_timer <= 0.0:
+		diag_timer = 2.0
+		Data.write_diag(phase)
 
 
 func _build_hud() -> void:
@@ -144,14 +171,24 @@ func _start_day() -> void:
 func _start_brew() -> void:
 	if phase != "forage":
 		return
+	_enter_brew()
+
+
+func _enter_brew() -> void:
+	Data.save_game("brew")
 	_set_phase("brew", Brew.new(), "Day %d · Brew" % Data.day,
-		"Drag two ingredients into the cauldron, then stir.", "Fortify", _start_fortify)
+		"Drag two mushrooms into the cauldron, then pop the bubbles.", "Fortify", _start_fortify)
 
 
 func _start_fortify() -> void:
 	if phase != "brew":
 		return
 	phase_node.return_pot()
+	_enter_fortify()
+
+
+func _enter_fortify() -> void:
+	Data.save_game("fortify")
 	var defense := Defense.new()
 	defense.night_over.connect(_on_night_over)
 	_set_phase("fortify", defense, "Day %d · Fortify" % Data.day,

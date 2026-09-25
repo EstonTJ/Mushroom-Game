@@ -312,6 +312,29 @@ func _ready() -> void:
 	Data.reset_game()
 	check(Data.load_game() and Data.day == 7 and Data.inventory["morel"] == 5 and Data.bottles["frost"] == 2
 		and Data.discovered.has("frost") and Data.seen_creatures.has("moth"), "a save loads back to the same day and stock")
+	# Resuming mid-day: a save made when entering the cauldron or fortifying
+	# brings a reloaded game back to that screen, with the morning's snapshot.
+	Data.reset_game()
+	Data.day = 5
+	Data.inventory["puffball"] = 2
+	Data.take_snapshot()
+	Data.inventory["puffball"] = 6
+	Data.save_game("brew")
+	var m2 = load("res://main.tscn").instantiate()
+	add_child(m2)
+	await frames(2)
+	check(m2.phase == "brew" and Data.day == 5 and Data.inventory["puffball"] == 6 and m2.hint.text.begins_with("Welcome back"),
+		"a reload resumes on the cauldron with the foraged mushrooms")
+	m2._on_action()
+	await frames(2)
+	check(m2.phase == "fortify" and Data.saved_phase == "brew", "moving on to fortify saves again")
+	var m3_check := Data.load_game()
+	check(m3_check and Data.saved_phase == "fortify", "the fortify save is on disk")
+	Data.restore_snapshot()
+	check(Data.inventory["puffball"] == 2, "Retry day after a reload restores the morning's stock")
+	m2.queue_free()
+	await frames(1)
+
 	Data.clear_save()
 	check(not Data.load_game(), "with no save, the game starts fresh")
 

@@ -234,31 +234,61 @@ func reset_game() -> void:
 
 const SAVE_PATH := "user://save.json"
 const SAVE_VERSION := 1
+## In a browser the save is also kept in localStorage, which is written at
+## once; Godot's own user:// storage (IndexedDB) is synced a moment later and
+## can miss a save if the page is killed right after it.
+const WEB_SAVE_KEY := "mushroom_moon_save"
+const WEB_DIAG_KEY := "mushroom_moon_diag"
+
+## Which screen the last save was made on ("forage", "brew" or "fortify"),
+## so a reload resumes there.
+var saved_phase := "forage"
 
 
-## Writes the start-of-day state to disk (IndexedDB in a browser), so closing
-## or reloading the page resumes at the start of this day.
-func save_game() -> void:
+func _web() -> bool:
+	return OS.has_feature("web")
+
+
+## Writes the current state to disk (and localStorage in a browser). phase is
+## the screen to resume on after a reload; the start-of-day snapshot is saved
+## too so "Retry day" still works after a reload.
+func save_game(phase: String = "forage") -> void:
+	var text := JSON.stringify({"version": SAVE_VERSION, "day": day, "phase": phase, "inventory": inventory,
+		"bottles": bottles, "discovered": discovered, "seen_creatures": seen_creatures, "unlock_seen": unlock_seen,
+		"snapshot": _snapshot})
 	var f := FileAccess.open(SAVE_PATH, FileAccess.WRITE)
-	if f == null:
-		return
-	f.store_string(JSON.stringify({"version": SAVE_VERSION, "day": day, "inventory": inventory, "bottles": bottles,
-		"discovered": discovered, "seen_creatures": seen_creatures, "unlock_seen": unlock_seen}))
-	f.close()
+	if f != null:
+		f.store_string(text)
+		f.close()
+	if _web():
+		JavaScriptBridge.eval("try { localStorage.setItem(%s, %s); } catch (e) {}" % [JSON.stringify(WEB_SAVE_KEY), JSON.stringify(text)])
+
+
+func _read_save_text() -> String:
+	if _web():
+		var web_text = JavaScriptBridge.eval("(function(){ try { return localStorage.getItem(%s) || ''; } catch (e) { return ''; } })()"
+			% JSON.stringify(WEB_SAVE_KEY))
+		if typeof(web_text) == TYPE_STRING and web_text != "":
+			return web_text
+	if FileAccess.file_exists(SAVE_PATH):
+		return FileAccess.get_file_as_string(SAVE_PATH)
+	return ""
 
 
 ## Loads a saved game. Returns false (leaving state untouched) if there is no
 ## usable save. Unknown ids are ignored and missing ones start at 0, so saves
 ## survive new mushrooms or potions being added.
 func load_game() -> bool:
-	if not FileAccess.file_exists(SAVE_PATH):
+	var text := _read_save_text()
+	if text == "":
 		return false
-	var data = JSON.parse_string(FileAccess.get_file_as_string(SAVE_PATH))
+	var data = JSON.parse_string(text)
 	if typeof(data) != TYPE_DICTIONARY or int(data.get("version", 0)) != SAVE_VERSION:
 		return false
 	reset_game()
 	day = clampi(int(data.get("day", 1)), 1, NIGHTS)
 	unlock_seen = int(data.get("unlock_seen", 0))
+	saved_phase = str(data.get("phase", "forage"))
 	for id in ingredient_order:
 		inventory[id] = int(data.get("inventory", {}).get(id, 0))
 	for id in potion_order:
@@ -269,12 +299,46 @@ func load_game() -> bool:
 	for kind in data.get("seen_creatures", {}):
 		if creatures.has(kind):
 			seen_creatures[kind] = true
+	var snap = data.get("snapshot", {})
+	if typeof(snap) == TYPE_DICTIONARY and snap.has("inventory") and snap.has("bottles"):
+		_snapshot = {"inventory": {}, "bottles": {}}
+		for id in ingredient_order:
+			_snapshot["inventory"][id] = int(snap["inventory"].get(id, 0))
+		for id in potion_order:
+			_snapshot["bottles"][id] = int(snap["bottles"].get(id, 0))
+	else:
+		take_snapshot()
 	return true
 
 
 func clear_save() -> void:
 	if FileAccess.file_exists(SAVE_PATH):
 		DirAccess.remove_absolute(ProjectSettings.globalize_path(SAVE_PATH))
+	if _web():
+		JavaScriptBridge.eval("try { localStorage.removeItem(%s); } catch (e) {}" % JSON.stringify(WEB_SAVE_KEY))
+
+
+## Crash notes (browser only): every couple of seconds the game records where
+## it is and how smoothly it's running. If the page dies, the next load can say
+## where it happened.
+func write_diag(phase: String) -> void:
+	if not _web():
+		return
+	var note := JSON.stringify({"day": day, "phase": phase, "fps": Engine.get_frames_per_second(),
+		"time": Time.get_unix_time_from_system()})
+	JavaScriptBridge.eval("try { localStorage.setItem(%s, %s); } catch (e) {}" % [JSON.stringify(WEB_DIAG_KEY), JSON.stringify(note)])
+
+
+## The note left by the previous session, then cleared. Empty if none.
+func take_last_diag() -> Dictionary:
+	if not _web():
+		return {}
+	var raw = JavaScriptBridge.eval("(function(){ try { var v = localStorage.getItem(%s) || ''; localStorage.removeItem(%s); return v; } catch (e) { return ''; } })()"
+		% [JSON.stringify(WEB_DIAG_KEY), JSON.stringify(WEB_DIAG_KEY)])
+	if typeof(raw) != TYPE_STRING or raw == "":
+		return {}
+	var d = JSON.parse_string(raw)
+	return d if typeof(d) == TYPE_DICTIONARY else {}
 
 
 ## Saved at the start of each day so a lost night can be retried.
