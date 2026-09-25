@@ -52,6 +52,7 @@ var pot: Array[String] = []
 var dragging := ""
 var swirl := 0.0
 var pot_bone := false
+var auto_flight := 1.0
 var bubble := {}
 var bubbles_done := 0
 var perfect_pops := 0
@@ -137,6 +138,7 @@ func _process(delta: float) -> void:
 		cell_flash[k] = maxf(0.0, cell_flash[k] - delta)
 
 	_bubble_step(delta)
+	auto_flight = minf(1.0, auto_flight + delta * 2.0)
 	for r in rings:
 		r["t"] += delta
 	rings = rings.filter(func(r): return r["t"] < 0.5)
@@ -192,6 +194,10 @@ func _on_press(p: Vector2) -> void:
 	if PAGE_NEXT.has_point(p):
 		book_page = posmod(book_page + 1, _page_count())
 		return
+	if has_auto() and auto_switch_rect().has_point(p):
+		Data.auto_bone = not Data.auto_bone
+		_auto_bone()
+		return
 	if has_mortar() and p.distance_to(BONE_BOWL) < 64.0:
 		if Data.bones > 0 and not pot_bone:
 			dragging = "bone"
@@ -211,6 +217,24 @@ func has_mortar() -> bool:
 	return Data.upgrades.has("bone_mortar")
 
 
+func has_auto() -> bool:
+	return Data.upgrades.has("bone_appetit")
+
+
+## The Bone Appétit's ON/OFF switch, just under the bone bowl.
+func auto_switch_rect() -> Rect2:
+	return Rect2(BONE_BOWL.x - 52, BONE_BOWL.y + 66, 104, 34)
+
+
+## With the Bone Appétit on, a bone goes in by itself once two mushrooms are in.
+func _auto_bone() -> void:
+	if has_auto() and Data.auto_bone and brewing() and not pot_bone and Data.bones > 0:
+		Data.bones -= 1
+		pot_bone = true
+		auto_flight = 0.0
+		_splash(Color("efe6c0"))
+
+
 func _on_release(p: Vector2) -> void:
 	if dragging == "bone":
 		if p.distance_to(POT) < 200.0 and not pot_bone:
@@ -227,6 +251,7 @@ func _on_release(p: Vector2) -> void:
 			_splash(Data.ingredients[dragging]["color"])
 			if brewing():
 				_reset_bubbles()
+				_auto_bone()
 		dragging = ""
 
 
@@ -569,6 +594,18 @@ func _paint_bone_bowl(ci: CanvasItem, font: Font) -> void:
 	ci.draw_string(font, BONE_BOWL + Vector2(-40, 56), "Bones " + tag, HORIZONTAL_ALIGNMENT_CENTER, 80, 15, Data.parchment)
 	if n > 0 and not pot_bone and dragging == "":
 		Art.sparkle(ci, BONE_BOWL + Vector2(36, -26), 6.0 + 3.0 * sin(t * 5.0), Color(1, 0.95, 0.7))
+	if has_auto():
+		var sw := auto_switch_rect()
+		ci.draw_rect(sw, Color("4f8a44") if Data.auto_bone else Color("5a4a40"))
+		ci.draw_rect(sw, Color("2a1e14"), false, 2.0)
+		ci.draw_string(font, sw.position + Vector2(0, 24), "Auto: " + ("ON" if Data.auto_bone else "OFF"), HORIZONTAL_ALIGNMENT_CENTER,
+			sw.size.x, 16, Color.WHITE)
+	if auto_flight < 1.0:
+		var k := auto_flight
+		var from := BONE_BOWL + Vector2(0, -10)
+		var to := SURFACE + Vector2(-40, -10)
+		var ctrl := (from + to) * 0.5 + Vector2(0, -160)
+		Art.bone(ci, from.lerp(ctrl, k).lerp(ctrl.lerp(to, k), k), 44, 1.0, k * 8.0)
 
 
 func _paint_candle(ci: CanvasItem) -> void:

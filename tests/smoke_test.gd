@@ -238,6 +238,28 @@ func _ready() -> void:
 		lab._on_release(lab.POT)
 		lab.return_pot()
 		check(Data.bones == 1 and not lab.pot_bone, "emptying the pot gives the bone back")
+
+		# Bone Appétit: needs the Bone Mortar, then loads a bone into every brew by itself.
+		Data.upgrades.erase("bone_mortar")
+		Data.coins = 200
+		check(not Data.buy("bone_appetit") and Data.coins == 200, "the Bone Appétit needs the Bone Mortar first")
+		Data.upgrades["bone_mortar"] = true
+		check(Data.buy("bone_appetit") and Data.coins == 140, "the Bone Appétit costs 60 coins")
+		Data.bones = 2
+		Data.inventory["puffball"] = 3
+		Data.inventory["fly_agaric"] = 3
+		var plus_before: int = Data.bottles["spore+"]
+		brew_pair(lab, "puffball", "fly_agaric", "early")
+		check(Data.bones == 1 and Data.bottles["spore+"] == plus_before + 1, "with the Bone Appétit, a bone goes in by itself")
+		lab._on_press(lab.auto_switch_rect().get_center())
+		check(not Data.auto_bone, "the switch on the bone bowl turns it off")
+		var plain_before: int = Data.bottles["spore"]
+		brew_pair(lab, "puffball", "fly_agaric", "early")
+		check(Data.bones == 1 and Data.bottles["spore"] == plain_before + 1, "switched off, bones are saved")
+		lab._on_press(lab.auto_switch_rect().get_center())
+		Data.bones = 0
+		brew_pair(lab, "puffball", "fly_agaric", "early")
+		check(Data.bones == 0 and Data.bottles["spore"] == plain_before + 2, "with no bones left it brews a normal potion")
 		Data.day = 4
 		main._begin_day()
 		await frames(1)

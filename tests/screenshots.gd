@@ -59,6 +59,7 @@ func _ready() -> void:
 		Data.discovered[id] = true
 		Data.bottles[id] = 1
 	Data.upgrades["bone_mortar"] = true
+	Data.upgrades["bone_appetit"] = true
 	Data.bones = 3
 	Data.coins = 27
 	Data.bottles["frost+"] = 1
@@ -130,6 +131,7 @@ func _ready() -> void:
 	sh.earned_bones = 2
 	Data.coins = 44
 	Data.upgrades.erase("bone_mortar")
+	Data.upgrades.erase("bone_appetit")
 	add_child(sh)
 	await frames(20)
 	await shot("10_market")

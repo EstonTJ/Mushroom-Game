@@ -6,7 +6,7 @@ extends Node2D
 const Art = preload("res://scripts/art.gd")
 
 const CARD_W := 640.0
-const CARD_H := 250.0
+const CARD_H := 252.0
 const FIRST_CARD_Y := 560.0
 
 var earned_coins := 0
@@ -37,12 +37,12 @@ func _box(bg: Color, border: Color, radius: int, border_w: int) -> StyleBoxFlat:
 
 
 func card_rect(i: int) -> Rect2:
-	return Rect2(40, FIRST_CARD_Y + i * (CARD_H + 24), CARD_W, CARD_H)
+	return Rect2(40, FIRST_CARD_Y + i * (CARD_H + 10), CARD_W, CARD_H)
 
 
 func buy_rect(i: int) -> Rect2:
 	var c := card_rect(i)
-	return Rect2(c.end.x - 196, c.end.y - 78, 172, 58)
+	return Rect2(c.end.x - 196, c.end.y - 66, 172, 54)
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -59,6 +59,10 @@ func tap(p: Vector2) -> void:
 func try_buy(item: String) -> bool:
 	var info: Dictionary = Data.shop_items[item]
 	if Data.upgrades.has(item):
+		return false
+	if not Data.can_buy_after(item):
+		message = "You need the %s first." % Data.shop_items[info["requires"]]["name"]
+		message_t = 0.0
 		return false
 	if Data.buy(item):
 		message = "%s added to your lab!" % info["name"]
@@ -126,15 +130,21 @@ func _draw_item(font: Font, rid: RID, i: int, item: String) -> void:
 	var c := card_rect(i)
 	card_box.draw(rid, c)
 	var owned: bool = Data.upgrades.has(item)
-	var icon := c.position + Vector2(96, 118)
+	var icon := c.position + Vector2(96, 112)
 	Art.glow(self, icon, 90, Color(1.0, 0.85, 0.5, 0.35))
-	_draw_mortar(icon, 1.0)
+	if item == "bone_appetit":
+		_draw_bone_appetit(icon)
+	else:
+		_draw_mortar(icon, 1.0)
 	draw_string(font, c.position + Vector2(190, 52), info["name"], HORIZONTAL_ALIGNMENT_LEFT, -1, 32, Data.ink)
 	draw_string(font, c.position + Vector2(190, 82), "Lab upgrade", HORIZONTAL_ALIGNMENT_LEFT, -1, 18, Color("8a6242"))
 	draw_multiline_string(font, c.position + Vector2(190, 114), info["desc"], HORIZONTAL_ALIGNMENT_LEFT, c.size.x - 214, 17, 4,
 		Art.fade(Data.ink, 0.85))
 	var b := buy_rect(i)
-	if owned:
+	if not owned and not Data.can_buy_after(item):
+		draw_string(font, b.position + Vector2(-40, 38), "Needs " + Data.shop_items[info["requires"]]["name"], HORIZONTAL_ALIGNMENT_RIGHT,
+			b.size.x + 30, 19, Color("8a6242"))
+	elif owned:
 		draw_string(font, b.position + Vector2(0, 38), "Owned", HORIZONTAL_ALIGNMENT_CENTER, b.size.x, 26, Color("4f8a44"))
 		Art.sparkle(self, b.position + Vector2(20, 28), 9.0, Color("4f8a44"))
 	else:
@@ -143,6 +153,26 @@ func _draw_item(font: Font, rid: RID, i: int, item: String) -> void:
 		buy_box.draw(rid, b)
 		Art.coin(self, b.position + Vector2(34, 29), 30)
 		draw_string(font, b.position + Vector2(56, 39), "%d  Buy" % int(info["price"]), HORIZONTAL_ALIGNMENT_LEFT, -1, 24, Color.WHITE)
+
+
+## A little bone-loading contraption: a gear, a hopper of bones and a chute.
+func _draw_bone_appetit(at: Vector2) -> void:
+	var spin := t * 1.5
+	var gear := at + Vector2(-26, 10)
+	for k in 8:
+		var ang := spin + k * TAU / 8.0
+		draw_line(gear + Vector2.from_angle(ang) * 26.0, gear + Vector2.from_angle(ang) * 38.0, Color("8a8494"), 10.0, true)
+	draw_circle(gear, 30, Color("8a8494"))
+	draw_circle(gear, 12, Color("3e3a44"))
+	var hopper := PackedVector2Array([at + Vector2(6, -62), at + Vector2(70, -62), at + Vector2(52, -14), at + Vector2(24, -14)])
+	draw_colored_polygon(hopper, Color("8a6242"))
+	Art.outline(self, hopper, Art.fade(Art.INK, 0.6), 2.0)
+	for k in 3:
+		Art.bone(self, at + Vector2(22 + k * 16, -64 - (k % 2) * 8), 30, 1.0, -0.7 + k * 0.6)
+	draw_line(at + Vector2(38, -14), at + Vector2(46, 34), Color("6a4a30"), 12.0, true)
+	var drop := fmod(t * 0.9, 1.0)
+	Art.bone(self, at + Vector2(46, 20 + drop * 30), 26, 1.0 - drop, 1.2)
+	Art.shadow(self, at + Vector2(0, 52), 64, 10)
 
 
 ## Stone mortar with a pestle and a bone poking out.

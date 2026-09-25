@@ -5,7 +5,7 @@ extends Node
 
 ## Shown on the title screen and in the menu, so players can tell whether
 ## their browser has the latest update. Bump it with each release.
-const VERSION := "0.14"
+const VERSION := "0.15"
 const HUT_HP := 5
 const NIGHTS := 40
 ## When mushrooms unlock, in ingredient_order: three on night 1, one more on
@@ -245,8 +245,10 @@ var creatures := {
 var shop_items := {
 	"bone_mortar": {"name": "Bone Mortar", "price": 30,
 		"desc": "Grind monster bones into your brews. Adds a bone bowl to the cauldron: drop a bone in with two mushrooms to brew an Empowered potion (bigger, longer, stronger)."},
+	"bone_appetit": {"name": "Bone Appétit", "price": 60, "requires": "bone_mortar",
+		"desc": "Never forget a bone again. Drops a monster bone into every brew by itself, as long as you have one. Switch it off at the bone bowl to save bones."},
 }
-var shop_order := ["bone_mortar"]
+var shop_order := ["bone_mortar", "bone_appetit"]
 
 ## How much stronger an Empowered potion (one brewed with a monster bone) is.
 const EMPOWER := {"radius": 1.3, "duration": 1.4, "dps": 1.5, "burst": 1.5, "ward": 2, "heal": 1}
@@ -257,6 +259,8 @@ var best_day := 1
 var coins := 0
 var bones := 0
 var upgrades := {}
+## Whether the Bone Appétit adds bones by itself (switch on the bone bowl).
+var auto_bone := true
 var _empowered := {}
 var inventory := {}
 var bottles := {}
@@ -278,6 +282,7 @@ func reset_game() -> void:
 	coins = 0
 	bones = 0
 	upgrades.clear()
+	auto_bone = true
 	for id in ingredient_order:
 		inventory[id] = 0
 	for key in bottle_keys():
@@ -308,7 +313,7 @@ func _web() -> bool:
 func save_game(phase: String = "forage") -> void:
 	var text := JSON.stringify({"version": SAVE_VERSION, "day": day, "phase": phase, "inventory": inventory,
 		"bottles": bottles, "discovered": discovered, "seen_creatures": seen_creatures, "unlock_seen": unlock_seen,
-		"coins": coins, "bones": bones, "upgrades": upgrades, "best_day": maxi(best_day, day), "snapshot": _snapshot})
+		"coins": coins, "bones": bones, "upgrades": upgrades, "auto_bone": auto_bone, "best_day": maxi(best_day, day), "snapshot": _snapshot})
 	var f := FileAccess.open(SAVE_PATH, FileAccess.WRITE)
 	if f != null:
 		f.store_string(text)
@@ -348,6 +353,7 @@ func load_game() -> bool:
 	for key in bottle_keys():
 		bottles[key] = int(data.get("bottles", {}).get(key, 0))
 	coins = int(data.get("coins", 0))
+	auto_bone = bool(data.get("auto_bone", true))
 	bones = int(data.get("bones", 0))
 	for u in data.get("upgrades", {}):
 		if shop_items.has(u):
@@ -478,9 +484,15 @@ func potion_stats(key: String) -> Dictionary:
 	return _empowered[key]
 
 
+## Whether an item's prerequisite upgrade (if any) is owned.
+func can_buy_after(item: String) -> bool:
+	var needs: String = shop_items[item].get("requires", "")
+	return needs == "" or upgrades.has(needs)
+
+
 ## Buy a lab upgrade. Returns false if already owned or not enough coins.
 func buy(item: String) -> bool:
-	if upgrades.has(item) or coins < int(shop_items[item]["price"]):
+	if upgrades.has(item) or coins < int(shop_items[item]["price"]) or not can_buy_after(item):
 		return false
 	coins -= int(shop_items[item]["price"])
 	upgrades[item] = true
