@@ -20,7 +20,6 @@ const BAR_Y := 1130.0
 const CELL_W := 180.0
 const NIGHT_FADE := 1.5
 const LANTERN_SIZE := 60.0
-const CREATURE_SIZE := 42.0
 const LEFT_PATH := [Vector2(40, 120), Vector2(180, 330), Vector2(110, 560), Vector2(250, 780), Vector2(330, 950)]
 const RIGHT_PATH := [Vector2(680, 120), Vector2(540, 320), Vector2(630, 560), Vector2(470, 780), Vector2(390, 950)]
 
@@ -47,6 +46,8 @@ var popups := []
 var particles := []
 var fireflies := []
 var spawned := 0
+var queue := []
+var intro := {}
 var spawn_timer := 0.0
 var smoke_timer := 0.0
 var repelled := 0
@@ -77,7 +78,12 @@ var cell_selected_box: StyleBoxFlat
 
 
 func _ready() -> void:
-	cfg = Data.nights[Data.day - 1]
+	cfg = Data.nights[Data.day - 1].duplicate(true)
+	for kind in Data.creature_order:
+		for i in cfg["waves"].get(kind, 0):
+			queue.append(kind)
+	queue.shuffle()
+	cfg["count"] = queue.size()
 	curves.append(_make_curve(LEFT_PATH))
 	curves.append(_make_curve(RIGHT_PATH))
 	for path_i in 2:
@@ -261,6 +267,10 @@ func _process(delta: float) -> void:
 		p["t"] += delta
 	popups = popups.filter(func(p): return p["t"] < 1.0)
 	_update_particles(delta)
+	if not intro.is_empty():
+		intro["t"] += delta
+		if intro["t"] > 4.0:
+			intro = {}
 	if mode == "night" and not over:
 		_night_step(delta)
 	if night_amt != was:
@@ -276,18 +286,19 @@ func _night_step(delta: float) -> void:
 	if spawned < cfg["count"]:
 		spawn_timer -= delta
 		if spawn_timer <= 0.0:
-			spawn_timer = cfg["interval"]
-			var path := randi() % 2
-			enemies.append({"path": path, "offset": 0.0, "pos": curves[path].sample_baked(0.0),
-				"courage": cfg["courage"], "max": cfg["courage"],
-				"speed": cfg["speed"] * randf_range(0.9, 1.15), "flee": -1.0, "dir": Vector2.UP,
-				"seed": randf() * 10.0})
+			var kind: String = queue[spawned]
+			# Scuttlers come in pairs: the next creature follows close behind.
+			spawn_timer = cfg["interval"] * (0.45 if kind == "scuttler" else 1.0)
+			enemies.append(_make_enemy(kind, randi() % 2))
 			spawned += 1
+			if not Data.seen_creatures.has(kind):
+				Data.seen_creatures[kind] = true
+				intro = {"kind": kind, "t": 0.0}
 
 	for s in slots:
 		if s["trap"] != "" and not s["triggered"]:
 			for e in enemies:
-				if e["flee"] < 0.0 and e["pos"].distance_to(s["pos"]) < 45.0:
+				if e["flee"] < 0.0 and not _info(e)["flying"] and e["pos"].distance_to(s["pos"]) < 45.0:
 					s["triggered"] = true
 					_spawn_area(s["trap"], s["pos"])
 					break
@@ -301,13 +312,28 @@ func _night_step(delta: float) -> void:
 			e["flee"] += delta
 			e["pos"] += e["dir"] * 140.0 * delta
 			continue
+		var info := _info(e)
 		var slow := 1.0
 		var dps := 0.0
+		var drowsy := false
+		var sticky := false
+		e["hurt"] = maxf(0.0, e["hurt"] - delta)
 		for a in areas:
 			if e["pos"].distance_to(a["pos"]) < a["radius"]:
+				if a["id"] == "syrup" and info["flying"]:
+					continue
 				var d: Dictionary = Data.potions[a["id"]]
-				slow = minf(slow, d["slow"])
+				var s_mult: float = d["slow"]
+				if a["id"] == "syrup":
+					sticky = true
+					if info["heavy"]:
+						s_mult = maxf(s_mult, 0.5)
+				if a["id"] == "spore":
+					drowsy = true
+				slow = minf(slow, s_mult)
 				dps += d["dps"]
+		e["drowsy"] = drowsy
+		e["stuck"] = sticky and slow < 0.6
 		e["courage"] -= dps * delta
 		if e["courage"] <= 0.0:
 			_scare(e)
@@ -317,15 +343,22 @@ func _night_step(delta: float) -> void:
 		var c: Curve2D = curves[e["path"]]
 		e["offset"] += e["speed"] * slow * delta
 		if e["offset"] >= c.get_baked_length():
-			if ward > 0:
-				ward -= 1
+			var blocked := 0
+			var hits := 0
+			for i in info["damage"]:
+				if ward > 0:
+					ward -= 1
+					blocked += 1
+				else:
+					hut_hp -= 1
+					hits += 1
+			if hits == 0:
 				repelled += 1
 				_popup("Warded!", HUT + Vector2(0, -170), Data.magic)
 				_burst(e["pos"], Data.magic, 16, 180.0)
 			else:
-				hut_hp -= 1
 				hit_flash = 0.4
-				_popup("-1", HUT + Vector2(0, -170), Color("ff7a6b"))
+				_popup("-%d" % hits, HUT + Vector2(0, -170), Color("ff7a6b"))
 				_burst(e["pos"], Color("ff7a6b"), 12, 140.0)
 			_scare(e)
 		else:
@@ -336,6 +369,18 @@ func _night_step(delta: float) -> void:
 		_end(false)
 	elif spawned >= cfg["count"] and enemies.is_empty():
 		_end(true)
+
+
+func _make_enemy(kind: String, path: int) -> Dictionary:
+	var info: Dictionary = Data.creatures[kind]
+	var courage: float = cfg["courage"] * info["courage"]
+	return {"kind": kind, "path": path, "offset": 0.0, "pos": curves[path].sample_baked(0.0),
+		"courage": courage, "max": courage, "speed": cfg["speed"] * info["speed"] * randf_range(0.9, 1.15),
+		"flee": -1.0, "dir": Vector2.UP, "seed": randf() * 10.0, "hurt": 0.0, "drowsy": false, "stuck": false}
+
+
+func _info(e: Dictionary) -> Dictionary:
+	return Data.creatures[e["kind"]]
 
 
 func _scare(e: Dictionary) -> void:
@@ -359,6 +404,7 @@ func _spawn_area(id: String, pos: Vector2) -> void:
 		for e in enemies:
 			if e["flee"] < 0.0 and e["pos"].distance_to(pos) < d["radius"]:
 				e["courage"] -= d["burst"]
+				e["hurt"] = 0.35
 
 
 func _end(won: bool) -> void:
@@ -507,9 +553,23 @@ func _area_strength(a: Dictionary) -> float:
 
 
 func _hop(e: Dictionary) -> float:
-	if e["flee"] >= 0.0:
+	if e["flee"] >= 0.0 or e["stuck"]:
 		return 0.0
-	return absf(sin(t * 7.0 + e["seed"])) * 5.0
+	match e["kind"]:
+		"mischief":
+			return absf(sin(t * 7.0 + e["seed"])) * 5.0
+		"stumpling":
+			return absf(sin(t * 3.5 + e["seed"])) * 2.0
+	return 0.0
+
+
+## Where to draw a creature this frame: its path position, plus hop and a
+## struggling shake while stuck in syrup.
+func _draw_pos(e: Dictionary) -> Vector2:
+	var pos: Vector2 = e["pos"] + Vector2(0, -_hop(e))
+	if e["stuck"] and e["flee"] < 0.0:
+		pos.x += sin(t * 40.0 + e["seed"]) * 2.5
+	return pos
 
 
 func _ward_points() -> Array:
@@ -673,13 +733,21 @@ func _paint_objects(ci: CanvasItem) -> void:
 	order.sort_custom(func(a, b): return a["pos"].y < b["pos"].y)
 	for e in order:
 		var fade := 1.0 - maxf(0.0, e["flee"])
-		var blink: bool = fmod(t + e["seed"], 3.2) < 0.12
-		var pos: Vector2 = e["pos"] + Vector2(0, -_hop(e))
-		Art.creature(ci, pos, CREATURE_SIZE, fade, t + e["seed"], blink)
+		var blink: bool = fmod(t + e["seed"], 3.2) < 0.12 or e["drowsy"]
+		var pos := _draw_pos(e)
+		var size: float = _info(e)["size"]
+		var walk: float = (t * 0.35 if e["stuck"] else t) + e["seed"]
+		Art.creature(ci, e["kind"], pos, size, fade, walk, blink)
+		var top := pos.y - size * (1.35 if e["kind"] == "moth" else 1.05)
 		if e["flee"] < 0.0 and e["courage"] < e["max"]:
 			var w: float = 40.0 * e["courage"] / e["max"]
-			ci.draw_rect(Rect2(pos.x - 20, pos.y - 44, 40, 6), Color(0, 0, 0, 0.55))
-			ci.draw_rect(Rect2(pos.x - 20, pos.y - 44, w, 6), Data.magic)
+			ci.draw_rect(Rect2(pos.x - 20, top, 40, 6), Color(0, 0, 0, 0.55))
+			ci.draw_rect(Rect2(pos.x - 20, top, w, 6), Data.magic)
+		if e["drowsy"] and e["flee"] < 0.0:
+			for k in 3:
+				var ph := fmod(t * 0.8 + k / 3.0, 1.0)
+				var zp := Vector2(pos.x + 14 + ph * 16, top - 6 - ph * 30)
+				ci.draw_string(font, zp, "z", HORIZONTAL_ALIGNMENT_LEFT, -1, 14 + int(ph * 8), Color(0.9, 0.85, 1.0, 1.0 - ph))
 
 	for a in areas:
 		if a["id"] == "spore":
@@ -771,9 +839,14 @@ func _paint_light_over(ci: CanvasItem) -> void:
 			Art.glow(ci, s["pos"] + Vector2(0, -6 + sin(t * 2.2 + i) * 3.0), 28, Art.fade(Data.potions[s["trap"]]["color"], 0.35))
 	for e in enemies:
 		var fade := 1.0 - maxf(0.0, e["flee"])
-		var pos: Vector2 = e["pos"] + Vector2(0, -_hop(e))
-		for side in [-1.0, 1.0]:
-			Art.glow(ci, pos + Vector2(side * CREATURE_SIZE * 0.17, -CREATURE_SIZE * 0.1), 11, Color(1, 0.85, 0.35, 0.45 * fade * n))
+		var pos := _draw_pos(e)
+		var size: float = _info(e)["size"]
+		var walk: float = (t * 0.35 if e["stuck"] else t) + e["seed"]
+		if not e["drowsy"]:
+			for eye in Art.creature_eyes(e["kind"], pos, size, walk):
+				Art.glow(ci, eye, size * 0.26, Color(1, 0.85, 0.35, 0.45 * fade * n))
+		if e["hurt"] > 0.0:
+			Art.glow(ci, pos + Vector2(0, -size * 0.2), size * 0.9, Color(1, 1, 1, e["hurt"] * 1.4))
 	if ward > 0:
 		var pts := _ward_points()
 		for k in mini(ward, pts.size()):
@@ -811,8 +884,18 @@ func _paint_ui(ci: CanvasItem) -> void:
 	var status := Rect2(14, 118, 692, 44)
 	status_box.draw(rid, status)
 	if mode == "fortify":
-		ci.draw_string(font, Vector2(34, 148), "Night %d  ·  %d creatures coming" % [Data.day, cfg["count"]],
-			HORIZONTAL_ALIGNMENT_LEFT, -1, 22, Data.parchment)
+		# Tonight's roster: an icon and count per creature type; a sparkle marks new ones.
+		ci.draw_string(font, Vector2(30, 148), "Night %d:" % Data.day, HORIZONTAL_ALIGNMENT_LEFT, -1, 22, Data.parchment)
+		var x := 130.0
+		for kind in Data.creature_order:
+			var n: int = cfg["waves"].get(kind, 0)
+			if n == 0:
+				continue
+			Art.creature(ci, kind, Vector2(x, 150.0 if kind != "moth" else 160.0), 26.0, 1.0, t, false)
+			ci.draw_string(font, Vector2(x + 18, 148), "x%d" % n, HORIZONTAL_ALIGNMENT_LEFT, -1, 20, Data.parchment)
+			if not Data.seen_creatures.has(kind):
+				Art.sparkle(ci, Vector2(x + 16, 126), 7.0 + sin(t * 6.0) * 2.0, Data.magic.lightened(0.3))
+			x += 100.0
 	else:
 		for i in Data.HUT_HP:
 			Art.heart(ci, Vector2(40 + i * 28, 140), 20, Color("ff7a6b") if i < hut_hp else Color(1, 1, 1, 0.15))
@@ -821,6 +904,9 @@ func _paint_ui(ci: CanvasItem) -> void:
 	var ward_x := 330.0 if mode == "night" else 620.0
 	Art.crystal(ci, Vector2(ward_x, 142), 24, Data.magic, 1.0 if ward > 0 else 0.35)
 	ci.draw_string(font, Vector2(ward_x + 16, 148), "x%d" % ward, HORIZONTAL_ALIGNMENT_LEFT, -1, 22, Data.parchment)
+
+	if not intro.is_empty():
+		_paint_intro(ci, rid, font)
 
 	ci.draw_rect(Rect2(0, BAR_Y, 720, 1280 - BAR_Y), Color("1a1426"))
 	ci.draw_rect(Rect2(0, BAR_Y, 720, 3), Art.fade(Data.magic, 0.4))
@@ -839,3 +925,22 @@ func _paint_ui(ci: CanvasItem) -> void:
 			Data.ink if n > 0 else Color(1, 1, 1, 0.4))
 		ci.draw_string(font, Vector2(cell.position.x, BAR_Y + 128), info["name"] if known else "???",
 			HORIZONTAL_ALIGNMENT_CENTER, cell.size.x, 19, Data.parchment if n > 0 else Color(1, 1, 1, 0.45))
+
+
+## Banner that introduces a creature type the first time it appears.
+func _paint_intro(ci: CanvasItem, rid: RID, font: Font) -> void:
+	var it: float = intro["t"]
+	var a := clampf(minf(it * 4.0, (4.0 - it) * 2.0), 0.0, 1.0)
+	var kind: String = intro["kind"]
+	var info: Dictionary = Data.creatures[kind]
+	var box := Rect2(40, 176 - (1.0 - a) * 20.0, 640, 96)
+	var style := status_box.duplicate() as StyleBoxFlat
+	style.bg_color = Color(0.06, 0.05, 0.12, 0.85 * a)
+	style.border_color = Art.fade(Data.magic, 0.6 * a)
+	style.draw(rid, box)
+	var s: float = info["size"]
+	Art.creature(ci, kind, box.position + Vector2(62, 62 if kind != "moth" else 76), s * 1.05, a, t, false)
+	ci.draw_string(font, box.position + Vector2(120, 38), "New: " + info["name"], HORIZONTAL_ALIGNMENT_LEFT, -1, 26,
+		Art.fade(Data.magic.lightened(0.3), a))
+	ci.draw_string(font, box.position + Vector2(120, 70), info["desc"], HORIZONTAL_ALIGNMENT_LEFT, 510, 18,
+		Art.fade(Data.parchment, a))

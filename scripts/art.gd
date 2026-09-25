@@ -148,39 +148,199 @@ static func bottle(ci: CanvasItem, pos: Vector2, s: float, color: Color, a: floa
 	ci.draw_rect(cork, ink, false, line_w)
 
 
-## Mischief creature: pear body, ears, belly, stepping feet, blinking eyes.
-## t drives the walk cycle; pass the same t each frame for smooth steps.
-static func creature(ci: CanvasItem, pos: Vector2, s: float, a: float = 1.0, t: float = 0.0, blink: bool = false) -> void:
-	var body := fade(Color("2a2240"), a)
-	var dark := fade(Color("150f22"), a)
+## Night creatures. kind is a key of Data.creatures. pos is where the creature
+## stands; s is its size. t drives walk cycles and flapping (pass the same t
+## every frame for smooth animation).
+static func creature(ci: CanvasItem, kind: String, pos: Vector2, s: float, a: float = 1.0, t: float = 0.0, blink: bool = false) -> void:
+	match kind:
+		"scuttler":
+			_scuttler(ci, pos, s, a, t, blink)
+		"stumpling":
+			_stumpling(ci, pos, s, a, t, blink)
+		"moth":
+			_moth(ci, pos, s, a, t, blink)
+		_:
+			_mischief(ci, pos, s, a, t, blink)
+
+
+## Where each creature's eyes are, so a light layer can make them glow.
+static func creature_eyes(kind: String, pos: Vector2, s: float, t: float) -> Array:
+	match kind:
+		"scuttler":
+			return [pos + Vector2(-s * 0.07, -s * 0.37), pos + Vector2(s * 0.07, -s * 0.37)]
+		"stumpling":
+			return [pos + Vector2(-s * 0.14, -s * 0.08), pos + Vector2(s * 0.14, -s * 0.08)]
+		"moth":
+			var c := pos + Vector2(0, moth_lift(s, t))
+			return [c + Vector2(-s * 0.05, -s * 0.3), c + Vector2(s * 0.05, -s * 0.3)]
+		_:
+			return [pos + Vector2(-s * 0.09, -s * 0.3), pos + Vector2(s * 0.09, -s * 0.3)]
+
+
+static func moth_lift(s: float, t: float) -> float:
+	return -s * 0.6 + sin(t * 4.0) * s * 0.08
+
+
+static func _eyes(ci: CanvasItem, pts: Array, r: float, color: Color, blink: bool, a: float, line_w: float) -> void:
+	for e in pts:
+		if blink:
+			ci.draw_line(e + Vector2(-r * 1.4, 0), e + Vector2(r * 1.4, 0), fade(color, a), line_w, true)
+		else:
+			ci.draw_circle(e, r, fade(color, a))
+			ci.draw_circle(e + Vector2(-r * 0.35, -r * 0.35), r * 0.35, fade(Color.WHITE, 0.9 * a))
+
+
+## Hooded prankster: pointed floppy hood, swaying cloak hem, glowing eyes in a
+## dark face, little arms and feet.
+static func _mischief(ci: CanvasItem, pos: Vector2, s: float, a: float, t: float, blink: bool) -> void:
+	var cloak := fade(Color("2a2240"), a)
+	var shade := fade(Color("1a1430"), a)
+	var trim := fade(Color("5b4a86"), a)
 	var line_w := maxf(1.5, s * 0.05)
 	var step := sin(t * 14.0)
-	shadow(ci, pos + Vector2(0, s * 0.5), s * 0.42, s * 0.1, a)
-	ci.draw_colored_polygon(ellipse(pos + Vector2(-s * 0.2, s * 0.42 + minf(0.0, step) * s * 0.08), s * 0.13, s * 0.08, 12), dark)
-	ci.draw_colored_polygon(ellipse(pos + Vector2(s * 0.2, s * 0.42 + minf(0.0, -step) * s * 0.08), s * 0.13, s * 0.08, 12), dark)
-
+	shadow(ci, pos + Vector2(0, s * 0.5), s * 0.44, s * 0.1, a)
 	for side in [-1.0, 1.0]:
-		var ear := PackedVector2Array([pos + Vector2(side * s * 0.42, -s * 0.15), pos + Vector2(side * s * 0.34, -s * 0.8),
-			pos + Vector2(side * s * 0.08, -s * 0.38)])
-		ci.draw_colored_polygon(ear, body)
-		outline(ci, ear, dark, line_w)
-		ci.draw_colored_polygon(PackedVector2Array([pos + Vector2(side * s * 0.34, -s * 0.28), pos + Vector2(side * s * 0.32, -s * 0.62),
-			pos + Vector2(side * s * 0.18, -s * 0.38)]), fade(Color("5b4580"), a))
-
-	var bp := ellipse(pos, s * 0.48, s * 0.5, 24)
-	ci.draw_colored_polygon(bp, body)
-	ci.draw_colored_polygon(ellipse(pos + Vector2(0, s * 0.17), s * 0.28, s * 0.24, 16), fade(Color("3b2f58"), a))
-	outline(ci, bp, dark, line_w)
-
+		var lift := maxf(0.0, step * side) * s * 0.08
+		ci.draw_colored_polygon(ellipse(pos + Vector2(side * s * 0.18, s * 0.47 - lift), s * 0.13, s * 0.07, 12), shade)
 	for side in [-1.0, 1.0]:
-		var e := pos + Vector2(side * s * 0.17, -s * 0.1)
-		if blink:
-			ci.draw_line(e + Vector2(-s * 0.1, 0), e + Vector2(s * 0.1, 0), fade(Color("ffd66b"), a), line_w, true)
-		else:
-			ci.draw_circle(e, s * 0.12, fade(Color("ffd66b"), a))
-			ci.draw_circle(e + Vector2(0, s * 0.02), s * 0.05, dark)
-			ci.draw_circle(e + Vector2(-s * 0.04, -s * 0.04), s * 0.025, fade(Color.WHITE, a))
-	ci.draw_arc(pos + Vector2(0, s * 0.06), s * 0.08, 0.3, PI - 0.3, 8, dark, maxf(1.0, s * 0.03), true)
+		ci.draw_circle(pos + Vector2(side * s * 0.47, s * 0.02 - step * side * s * 0.06), s * 0.1, shade)
+
+	var hem := PackedVector2Array()
+	for i in 9:
+		var u := i / 8.0
+		hem.append(pos + Vector2(s * (0.52 - 1.04 * u), s * (0.44 + 0.05 * sin(t * 8.0 + u * 9.0))))
+	var body := PackedVector2Array([pos + Vector2(s * 0.32, -s * 1.0), pos + Vector2(s * 0.24, -s * 0.72),
+		pos + Vector2(s * 0.3, -s * 0.42), pos + Vector2(s * 0.42, s * 0.05), pos + Vector2(s * 0.52, s * 0.38)])
+	body.append_array(hem)
+	body.append_array(PackedVector2Array([pos + Vector2(-s * 0.52, s * 0.38), pos + Vector2(-s * 0.42, s * 0.05),
+		pos + Vector2(-s * 0.3, -s * 0.42), pos + Vector2(-s * 0.18, -s * 0.78), pos + Vector2(s * 0.05, -s * 0.93)]))
+	ci.draw_colored_polygon(body, cloak)
+	ci.draw_colored_polygon(PackedVector2Array([pos + Vector2(s * 0.24, -s * 0.72), pos + Vector2(s * 0.3, -s * 0.42),
+		pos + Vector2(s * 0.42, s * 0.05), pos + Vector2(s * 0.52, s * 0.4), pos + Vector2(s * 0.3, s * 0.42),
+		pos + Vector2(s * 0.2, 0.0), pos + Vector2(s * 0.14, -s * 0.5)]), fade(shade, 0.7))
+	outline(ci, body, fade(INK, 0.9 * a), line_w)
+	var trim_line := PackedVector2Array()
+	for p in hem:
+		trim_line.append(p + Vector2(0, -s * 0.05))
+	ci.draw_polyline(trim_line, trim, line_w * 1.2, true)
+	ci.draw_line(pos + Vector2(-s * 0.22, s * 0.12), pos + Vector2(-s * 0.08, s * 0.2), trim, line_w * 0.8, true)
+	ci.draw_line(pos + Vector2(-s * 0.18, s * 0.2), pos + Vector2(-s * 0.12, s * 0.1), trim, line_w * 0.8, true)
+
+	var face := pos + Vector2(0, -s * 0.3)
+	ci.draw_colored_polygon(ellipse(face, s * 0.2, s * 0.17, 20), fade(Color("0d0a14"), a))
+	_eyes(ci, creature_eyes("mischief", pos, s, t), s * 0.055, Color("ffd66b"), blink, a, line_w)
+
+
+## Beetle-spider: violet shell with a sheen, six scuttling legs, antennae.
+static func _scuttler(ci: CanvasItem, pos: Vector2, s: float, a: float, t: float, blink: bool) -> void:
+	var shell := fade(Color("2e2448"), a)
+	var dark := fade(Color("140f20"), a)
+	var line_w := maxf(1.5, s * 0.06)
+	shadow(ci, pos + Vector2(0, s * 0.32), s * 0.58, s * 0.14, a)
+	for side in [-1.0, 1.0]:
+		for j in 3:
+			var ph := sin(t * 30.0 + j * 2.1 + side)
+			var base := pos + Vector2(side * s * 0.22, (j - 1) * s * 0.18)
+			var knee := pos + Vector2(side * s * 0.56, (j - 1) * s * 0.22 - s * 0.14 + ph * s * 0.06)
+			var foot := pos + Vector2(side * s * 0.74, (j - 1) * s * 0.3 + s * 0.08 - ph * s * 0.06)
+			ci.draw_polyline(PackedVector2Array([base, knee, foot]), dark, line_w, true)
+	var body := ellipse(pos, s * 0.38, s * 0.32, 24)
+	ci.draw_colored_polygon(body, shell)
+	ci.draw_colored_polygon(ellipse(pos + Vector2(s * 0.12, s * 0.08), s * 0.2, s * 0.18, 16), fade(Color("221a38"), a))
+	ci.draw_line(pos + Vector2(0, -s * 0.3), pos + Vector2(0, s * 0.31), dark, maxf(1.0, s * 0.04), true)
+	ci.draw_arc(pos + Vector2(-s * 0.08, -s * 0.04), s * 0.22, PI * 1.05, PI * 1.55, 8, fade(Color("8a78c8"), 0.85 * a), line_w, true)
+	ci.draw_circle(pos + Vector2(-s * 0.18, s * 0.1), s * 0.05, fade(Color("5b4a86"), a))
+	ci.draw_circle(pos + Vector2(s * 0.16, -s * 0.12), s * 0.04, fade(Color("5b4a86"), a))
+	outline(ci, body, dark, line_w)
+	var head := pos + Vector2(0, -s * 0.34)
+	for side in [-1.0, 1.0]:
+		ci.draw_polyline(PackedVector2Array([head + Vector2(side * s * 0.06, -s * 0.08), head + Vector2(side * s * 0.16, -s * 0.3),
+			head + Vector2(side * s * 0.26, -s * 0.28 + sin(t * 9.0 + side) * s * 0.04)]), dark, maxf(1.0, s * 0.035), true)
+	ci.draw_circle(head, s * 0.17, dark)
+	_eyes(ci, creature_eyes("scuttler", pos, s, t), s * 0.055, Color("ffb04a"), blink, a, line_w)
+
+
+## Walking tree stump: bark with grooves, a cut top with rings, moss and a
+## tiny toadstool, root legs, twig arms and a grumpy face.
+static func _stumpling(ci: CanvasItem, pos: Vector2, s: float, a: float, t: float, blink: bool) -> void:
+	var bark := fade(Color("5a4030"), a)
+	var bark_dark := fade(Color("3e2c20"), a)
+	var line_w := maxf(1.5, s * 0.035)
+	var step := sin(t * 7.0)
+	shadow(ci, pos + Vector2(0, s * 0.47), s * 0.52, s * 0.11, a)
+	for side in [-1.0, 1.0]:
+		var lift := maxf(0.0, step * side) * s * 0.06
+		ci.draw_colored_polygon(PackedVector2Array([pos + Vector2(side * s * 0.1, s * 0.3), pos + Vector2(side * s * 0.34, s * 0.3),
+			pos + Vector2(side * s * 0.4, s * 0.47 - lift), pos + Vector2(side * s * 0.08, s * 0.47 - lift)]), bark_dark)
+	for side in [-1.0, 1.0]:
+		var sh := pos + Vector2(side * s * 0.42, -s * 0.05)
+		var hand := sh + Vector2(side * s * 0.28, -s * 0.12 + step * side * s * 0.05)
+		ci.draw_line(sh, hand, bark_dark, maxf(2.0, s * 0.07), true)
+		ci.draw_line(hand, hand + Vector2(side * s * 0.08, -s * 0.1), bark_dark, maxf(1.5, s * 0.04), true)
+		leaf(ci, hand + Vector2(side * s * 0.03, -s * 0.14), s * 0.09, side * 0.6, fade(Color("7a9a4a"), a))
+
+	var body := PackedVector2Array([pos + Vector2(-s * 0.4, -s * 0.36), pos + Vector2(s * 0.4, -s * 0.36),
+		pos + Vector2(s * 0.47, s * 0.34), pos + Vector2(-s * 0.47, s * 0.34)])
+	ci.draw_colored_polygon(body, bark)
+	ci.draw_colored_polygon(PackedVector2Array([pos + Vector2(s * 0.18, -s * 0.36), pos + Vector2(s * 0.4, -s * 0.36),
+		pos + Vector2(s * 0.47, s * 0.34), pos + Vector2(s * 0.22, s * 0.34)]), fade(bark_dark, 0.45))
+	for k in 5:
+		var x := -0.3 + k * 0.15
+		ci.draw_line(pos + Vector2(x * s, -s * 0.3), pos + Vector2(x * 1.12 * s, s * 0.3), bark_dark, line_w, true)
+	outline(ci, body, fade(INK, 0.9 * a), line_w * 1.4)
+
+	var top := pos + Vector2(0, -s * 0.36)
+	ci.draw_colored_polygon(ellipse(top, s * 0.4, s * 0.12, 24), fade(Color("c8a070"), a))
+	outline(ci, ellipse(top, s * 0.26, s * 0.08, 20), fade(Color("9a7448"), a), 1.5)
+	outline(ci, ellipse(top, s * 0.12, s * 0.04, 12), fade(Color("9a7448"), a), 1.5)
+	outline(ci, ellipse(top, s * 0.4, s * 0.12, 24), bark_dark, line_w)
+	ci.draw_colored_polygon(ellipse(top + Vector2(-s * 0.22, s * 0.03), s * 0.16, s * 0.06, 12), fade(Color("6f9a4a"), a))
+	mushroom(ci, top + Vector2(s * 0.18, -s * 0.01), s * 0.24, Color("d9623b"), a)
+
+	var face := pos + Vector2(0, -s * 0.08)
+	for side in [-1.0, 1.0]:
+		ci.draw_colored_polygon(ellipse(face + Vector2(side * s * 0.14, 0), s * 0.09, s * 0.07, 12), fade(Color("1a120c"), a))
+		ci.draw_line(face + Vector2(side * s * 0.25, -s * 0.12), face + Vector2(side * s * 0.05, -s * 0.06), bark_dark, maxf(2.0, s * 0.05), true)
+	_eyes(ci, creature_eyes("stumpling", pos, s, t), s * 0.045, Color("ffb04a"), blink, a, line_w)
+	ci.draw_polyline(PackedVector2Array([face + Vector2(-s * 0.1, s * 0.15), face + Vector2(-s * 0.03, s * 0.12),
+		face + Vector2(s * 0.03, s * 0.16), face + Vector2(s * 0.1, s * 0.13)]), fade(Color("1a120c"), a), line_w, true)
+
+
+## Dusk moth: hovers above its shadow, big flapping wings with eyespots,
+## fuzzy striped body, feathery antennae.
+static func _moth(ci: CanvasItem, pos: Vector2, s: float, a: float, t: float, blink: bool) -> void:
+	var c := pos + Vector2(0, moth_lift(s, t))
+	var flap := 0.45 + 0.55 * absf(sin(t * 14.0))
+	var ink := fade(INK, 0.85 * a)
+	var line_w := maxf(1.2, s * 0.03)
+	shadow(ci, pos + Vector2(0, s * 0.45), s * 0.36 * flap + 4.0, s * 0.08, 0.7 * a)
+	for side in [-1.0, 1.0]:
+		var lw := c + Vector2(side * s * 0.24 * flap, s * 0.16)
+		var lower := ellipse(lw, s * 0.22 * flap + 1.0, s * 0.18, 18)
+		ci.draw_colored_polygon(lower, fade(Color("45385a"), a))
+		outline(ci, lower, ink, line_w)
+		var uw := c + Vector2(side * s * 0.36 * flap, -s * 0.12)
+		var upper := ellipse(uw, s * 0.36 * flap + 1.0, s * 0.26, 22)
+		ci.draw_colored_polygon(upper, fade(Color("5a4a6a"), a))
+		ci.draw_colored_polygon(ellipse(uw + Vector2(side * s * 0.12 * flap, -s * 0.04), s * 0.2 * flap + 1.0, s * 0.14, 16),
+			fade(Color("6a5a7e"), a))
+		outline(ci, upper, ink, line_w)
+		ci.draw_circle(uw + Vector2(side * s * 0.1 * flap, 0), s * 0.09, fade(Color("d8b0f0"), a))
+		ci.draw_circle(uw + Vector2(side * s * 0.1 * flap, 0), s * 0.045, fade(Color("2a2240"), a))
+	ci.draw_colored_polygon(ellipse(c + Vector2(0, s * 0.05), s * 0.12, s * 0.3, 16), fade(Color("3a2e44"), a))
+	for k in 3:
+		var y := s * (-0.02 + k * 0.11)
+		ci.draw_line(c + Vector2(-s * 0.1, y), c + Vector2(s * 0.1, y), fade(Color("6a5a7e"), a), line_w * 1.5, true)
+	var head := c + Vector2(0, -s * 0.28)
+	for side in [-1.0, 1.0]:
+		var base := head + Vector2(side * s * 0.04, -s * 0.08)
+		var tip := head + Vector2(side * s * 0.22, -s * 0.32)
+		ci.draw_line(base, tip, ink, line_w, true)
+		for k in range(1, 5):
+			var at := base.lerp(tip, k / 5.0)
+			ci.draw_line(at, at + Vector2(side * s * 0.05, s * 0.03), ink, 1.0, true)
+	ci.draw_circle(head, s * 0.11, fade(Color("3a2e44"), a))
+	_eyes(ci, creature_eyes("moth", pos, s, t), s * 0.04, Color("ffd66b"), blink, a, line_w)
 
 
 static func hut_chimney(pos: Vector2, s: float) -> Vector2:

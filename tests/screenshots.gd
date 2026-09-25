@@ -70,6 +70,8 @@ func _ready() -> void:
 	def.selected = "syrup"
 	def._fortify_tap(def.slots[4]["pos"])
 	def.selected = "ember"
+	# Show the night-3 roster (all four creature types) on the fortify bar.
+	def.cfg["waves"] = Data.nights[2]["waves"]
 	await frames(5)
 	await shot("3_fortify")
 
@@ -91,4 +93,26 @@ func _ready() -> void:
 	def._spawn_area("ember", def.curves[0].sample_baked(250.0))
 	await frames(12)
 	await shot("5_night_effects")
+
+	# All four creature types: one drowsy in spores, one stuck in syrup, plus the intro banner.
+	def.enemies = []
+	def.areas = []
+	var c0: Curve2D = def.curves[0]
+	var c1: Curve2D = def.curves[1]
+	var lineup := [["mischief", 0, 330.0], ["scuttler", 0, 520.0], ["stumpling", 1, 300.0], ["moth", 1, 560.0],
+		["mischief", 1, 760.0], ["scuttler", 0, 740.0]]
+	for row in lineup:
+		var e: Dictionary = def._make_enemy(row[0], row[1])
+		e["offset"] = row[2]
+		e["pos"] = def.curves[row[1]].sample_baked(row[2])
+		def.enemies.append(e)
+	def._spawn_area("spore", c0.sample_baked(330.0))
+	def._spawn_area("syrup", c1.sample_baked(300.0))
+	def.intro = {"kind": "moth", "t": 1.0}
+	for i in 2:
+		for e in def.enemies:
+			e["hurt"] = 0.0
+		def._night_step(0.01)
+	await frames(10)
+	await shot("6_creatures")
 	get_tree().quit()

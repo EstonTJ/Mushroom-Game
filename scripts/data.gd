@@ -37,17 +37,34 @@ var potions := {
 		"radius": 0.0, "duration": 0.0, "slow": 1.0, "dps": 0.0, "burst": 0.0, "ward": 3},
 }
 
-# One entry per night. courage = how much it takes to make a creature flee.
+# Creature types. speed and courage multiply the night's base values.
+# flying: skips ground traps and syrup. heavy: syrup only halves its speed.
+# damage: hut hits (or ward charges) it costs when it reaches the hut.
+var creature_order := ["mischief", "scuttler", "stumpling", "moth"]
+var creatures := {
+	"mischief": {"name": "Mischief", "desc": "A hooded prankster.",
+		"speed": 1.0, "courage": 1.0, "size": 42.0, "flying": false, "heavy": false, "damage": 1},
+	"scuttler": {"name": "Scuttler", "desc": "Fast but timid. Comes in pairs.",
+		"speed": 1.7, "courage": 0.5, "size": 34.0, "flying": false, "heavy": false, "damage": 1},
+	"stumpling": {"name": "Stumpling", "desc": "Slow and stubborn. Too heavy to stick. Hits twice as hard.",
+		"speed": 0.6, "courage": 2.0, "size": 58.0, "flying": false, "heavy": true, "damage": 2},
+	"moth": {"name": "Dusk Moth", "desc": "Flies over traps and syrup. Throw at it!",
+		"speed": 1.15, "courage": 0.8, "size": 46.0, "flying": true, "heavy": false, "damage": 1},
+}
+
+# One entry per night. courage = how much it takes to make a basic creature
+# flee; waves = how many of each creature type come that night.
 var nights := [
-	{"count": 6, "interval": 2.2, "speed": 55.0, "courage": 2.0},
-	{"count": 10, "interval": 1.7, "speed": 62.0, "courage": 3.0},
-	{"count": 16, "interval": 1.3, "speed": 70.0, "courage": 3.0},
+	{"interval": 2.2, "speed": 55.0, "courage": 2.0, "waves": {"mischief": 6}},
+	{"interval": 1.7, "speed": 62.0, "courage": 3.0, "waves": {"mischief": 6, "scuttler": 4}},
+	{"interval": 1.5, "speed": 66.0, "courage": 3.0, "waves": {"mischief": 5, "scuttler": 4, "stumpling": 4, "moth": 3}},
 ]
 
 var day := 1
 var inventory := {}
 var bottles := {}
 var discovered := {}
+var seen_creatures := {}
 var _snapshot := {}
 
 
@@ -56,6 +73,7 @@ func reset_game() -> void:
 	inventory.clear()
 	bottles.clear()
 	discovered.clear()
+	seen_creatures.clear()
 	for id in ingredient_order:
 		inventory[id] = 0
 	for id in potion_order:

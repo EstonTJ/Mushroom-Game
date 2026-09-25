@@ -113,5 +113,43 @@ func _ready() -> void:
 		await frames(2)
 		check(Data.day == 2 and main.phase == "forage", "next day begins")
 
+	# Creature types: night 3 brings all four, each with its own rule.
+	Data.day = 3
+	var d3 = load("res://scripts/defense.gd").new()
+	add_child(d3)
+	await frames(1)
+	check(d3.cfg["count"] == 16 and d3.queue.count("moth") == 3 and d3.queue.count("stumpling") == 4,
+		"night 3 roster: 16 creatures incl. 3 moths and 4 stumplings")
+	d3.mode = "night"
+	d3.spawned = d3.cfg["count"]
+	var c1: Curve2D = d3.curves[1]
+	var trap_moth: Dictionary = d3._make_enemy("moth", 0)
+	trap_moth["pos"] = d3.slots[0]["pos"]
+	trap_moth["offset"] = d3.curves[0].get_baked_length() * 0.3
+	d3.slots[0]["trap"] = "spore"
+	var imp: Dictionary = d3._make_enemy("mischief", 1)
+	var stump: Dictionary = d3._make_enemy("stumpling", 1)
+	var moth: Dictionary = d3._make_enemy("moth", 1)
+	for e in [imp, stump, moth]:
+		e["offset"] = 300.0
+		e["pos"] = c1.sample_baked(300.0)
+	d3._spawn_area("syrup", c1.sample_baked(300.0))
+	d3.enemies = [trap_moth, imp, stump, moth]
+	d3._night_step(0.2)
+	check(not d3.slots[0]["triggered"], "moths fly over traps without setting them off")
+	check(imp["offset"] == 300.0 and imp["stuck"], "syrup holds a mischief in place")
+	check(stump["offset"] > 300.0 and stump["offset"] < 300.0 + stump["speed"] * 0.2 * 0.6,
+		"syrup only slows a stumpling (too heavy to stick)")
+	check(is_equal_approx(moth["offset"], 300.0 + moth["speed"] * 0.2), "moths ignore syrup")
+	var hitter: Dictionary = d3._make_enemy("stumpling", 1)
+	hitter["offset"] = c1.get_baked_length() - 0.1
+	d3.enemies = [hitter]
+	d3.areas = []
+	d3.ward = 1
+	d3.hut_hp = 5
+	d3._night_step(0.2)
+	check(d3.ward == 0 and d3.hut_hp == 4, "a stumpling costs two hits (one warded, one to the hut)")
+	d3.queue_free()
+
 	print("DONE: %d failure(s)" % failures)
 	get_tree().quit(1 if failures > 0 else 0)
