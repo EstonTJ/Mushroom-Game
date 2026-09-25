@@ -85,6 +85,12 @@ Godot --path . --quit-after 2000 res://tests/screenshots.tscn -- /path/to/folder
   2. When it's good, copy that exact build to live, commit and push:
      `tools/promote.sh`
 
+  Every build is stamped with its version (`tools/stamp_build.py`): the game
+  files are requested as `index.pck?v=0.21` and so on, and `version.txt` sits
+  next to the page. GitHub Pages lets browsers reuse files for 10 minutes, so
+  on opening, the page checks `version.txt` and, if a newer build is out,
+  reloads once onto it. Without this a phone kept showing the previous build.
+
   The "Web" preset uses the single-threaded template, which runs on any
   static host and in iPhone Safari without special server headers.
   `docs/.gdignore` stops Godot importing the build as game assets.

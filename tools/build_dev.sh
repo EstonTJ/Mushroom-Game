@@ -5,5 +5,7 @@ set -e
 cd "$(dirname "$0")/.."
 GODOT="${GODOT:-/Users/estontaylor/Downloads/Godot.app/Contents/MacOS/Godot}"
 mkdir -p docs/dev
+VERSION="$(grep -o 'VERSION := "[^"]*"' scripts/data.gd | cut -d'"' -f2)"
 "$GODOT" --headless --path . --export-release "Web" docs/dev/index.html
-echo "Dev build ready in docs/dev (version $(grep -o 'VERSION := "[^"]*"' scripts/data.gd | cut -d'"' -f2))."
+python3 tools/stamp_build.py docs/dev "$VERSION"
+echo "Dev build ready in docs/dev (version $VERSION)."
