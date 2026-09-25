@@ -16,7 +16,8 @@ var action := Callable()
 
 func _ready() -> void:
 	_build_hud()
-	Data.reset_game()
+	if not Data.load_game():
+		Data.reset_game()
 	_start_day()
 
 
@@ -75,6 +76,7 @@ func _set_text(t: String, h: String, button_text: String, on_action: Callable) -
 
 func _start_day() -> void:
 	Data.take_snapshot()
+	Data.save_game()
 	var forage := Forage.new()
 	forage.finished.connect(_start_brew)
 	_set_phase("forage", forage, "Day %d · Forage" % Data.day,

@@ -79,6 +79,7 @@ var ui_layer: Layer
 var status_box: StyleBoxFlat
 var cell_box: StyleBoxFlat
 var cell_selected_box: StyleBoxFlat
+var intro_box: StyleBoxFlat
 
 
 func _ready() -> void:
@@ -1131,7 +1132,9 @@ func _paint_intro(ci: CanvasItem, rid: RID, font: Font) -> void:
 	var kind: String = intro["kind"]
 	var info: Dictionary = Data.creatures[kind]
 	var box := Rect2(40, 176 - (1.0 - a) * 20.0, 640, 96)
-	var style := status_box.duplicate() as StyleBoxFlat
+	if intro_box == null:
+		intro_box = status_box.duplicate() as StyleBoxFlat
+	var style := intro_box
 	style.bg_color = Color(0.06, 0.05, 0.12, 0.85 * a)
 	style.border_color = Art.fade(Data.magic, 0.6 * a)
 	style.draw(rid, box)

@@ -149,6 +149,50 @@ func reset_game() -> void:
 		bottles[id] = 0
 
 
+const SAVE_PATH := "user://save.json"
+const SAVE_VERSION := 1
+
+
+## Writes the start-of-day state to disk (IndexedDB in a browser), so closing
+## or reloading the page resumes at the start of this day.
+func save_game() -> void:
+	var f := FileAccess.open(SAVE_PATH, FileAccess.WRITE)
+	if f == null:
+		return
+	f.store_string(JSON.stringify({"version": SAVE_VERSION, "day": day, "inventory": inventory, "bottles": bottles,
+		"discovered": discovered, "seen_creatures": seen_creatures}))
+	f.close()
+
+
+## Loads a saved game. Returns false (leaving state untouched) if there is no
+## usable save. Unknown ids are ignored and missing ones start at 0, so saves
+## survive new mushrooms or potions being added.
+func load_game() -> bool:
+	if not FileAccess.file_exists(SAVE_PATH):
+		return false
+	var data = JSON.parse_string(FileAccess.get_file_as_string(SAVE_PATH))
+	if typeof(data) != TYPE_DICTIONARY or int(data.get("version", 0)) != SAVE_VERSION:
+		return false
+	reset_game()
+	day = clampi(int(data.get("day", 1)), 1, NIGHTS)
+	for id in ingredient_order:
+		inventory[id] = int(data.get("inventory", {}).get(id, 0))
+	for id in potion_order:
+		bottles[id] = int(data.get("bottles", {}).get(id, 0))
+	for id in data.get("discovered", {}):
+		if potions.has(id):
+			discovered[id] = true
+	for kind in data.get("seen_creatures", {}):
+		if creatures.has(kind):
+			seen_creatures[kind] = true
+	return true
+
+
+func clear_save() -> void:
+	if FileAccess.file_exists(SAVE_PATH):
+		DirAccess.remove_absolute(ProjectSettings.globalize_path(SAVE_PATH))
+
+
 ## Saved at the start of each day so a lost night can be retried.
 ## Discovered recipes are kept on a retry: the player still knows them.
 func take_snapshot() -> void:

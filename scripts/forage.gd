@@ -75,6 +75,7 @@ var ui_layer: Layer
 var track_box: StyleBoxFlat
 var basket_box: StyleBoxFlat
 var fill_box: StyleBoxFlat
+var banner_box: StyleBoxFlat
 
 
 func _ready() -> void:
@@ -410,21 +411,25 @@ func _unhandled_input(event: InputEvent) -> void:
 	if done:
 		return
 	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
-		var p := get_global_mouse_position()
-		for o in obstacles:
-			if not o["gone"] and o["pos"].distance_to(p + Vector2(0, 10)) < 58.0:
-				_hit_obstacle(o)
-				return
-		for i in range(items.size() - 1, -1, -1):
-			var it: Dictionary = items[i]
-			if it["pos"].distance_to(p) < 60.0:
-				var info: Dictionary = Data.ingredients[it["id"]]
-				Data.inventory[it["id"]] += 1
-				popups.append({"text": "+1 " + info["name"], "pos": it["pos"], "t": 0.0, "color": info["color"]})
-				flyers.append({"id": it["id"], "from": it["pos"], "t": 0.0})
-				_burst(it["pos"], info["color"].lightened(0.35), 12, 160.0)
-				items.remove_at(i)
-				break
+		tap_at(get_global_mouse_position())
+
+
+## A tap on the forest floor: chips at a rock or stump, or picks a mushroom.
+func tap_at(p: Vector2) -> void:
+	for o in obstacles:
+		if not o["gone"] and o["pos"].distance_to(p + Vector2(0, 10)) < 58.0:
+			_hit_obstacle(o)
+			return
+	for i in range(items.size() - 1, -1, -1):
+		var it: Dictionary = items[i]
+		if it["pos"].distance_to(p) < 60.0:
+			var info: Dictionary = Data.ingredients[it["id"]]
+			Data.inventory[it["id"]] += 1
+			popups.append({"text": "+1 " + info["name"], "pos": it["pos"], "t": 0.0, "color": info["color"]})
+			flyers.append({"id": it["id"], "from": it["pos"], "t": 0.0})
+			_burst(it["pos"], info["color"].lightened(0.35), 12, 160.0)
+			items.remove_at(i)
+			break
 
 
 # -------------------------------------------------------------- particles ---
@@ -878,7 +883,9 @@ func _paint_banner(ci: CanvasItem, rid: RID, font: Font) -> void:
 	var bt: float = banner["t"]
 	var a := clampf(minf(bt * 4.0, (BANNER_TIME - bt) * 2.0), 0.0, 1.0)
 	var box := Rect2(24, 158 - (1.0 - a) * 20.0, 672, 176)
-	var style := basket_box.duplicate() as StyleBoxFlat
+	if banner_box == null:
+		banner_box = basket_box.duplicate() as StyleBoxFlat
+	var style := banner_box
 	style.bg_color = Color(0.12, 0.1, 0.06, 0.86 * a)
 	style.border_color = Color(0.95, 0.85, 0.55, 0.7 * a)
 	style.draw(rid, box)

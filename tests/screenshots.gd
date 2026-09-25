@@ -18,6 +18,7 @@ func shot(name: String) -> void:
 
 
 func _ready() -> void:
+	Data.clear_save()
 	var args := OS.get_cmdline_user_args()
 	if args.size() > 0:
 		out_dir = args[0]

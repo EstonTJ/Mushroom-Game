@@ -48,6 +48,7 @@ func night_map(day: int) -> Node:
 
 
 func _ready() -> void:
+	Data.clear_save()
 	# --- Mushroom unlock schedule --------------------------------------------
 	var counts := []
 	for n in [1, 2, 3, 5, 6, 9, 32, 33]:
@@ -257,6 +258,20 @@ func _ready() -> void:
 	check(lay["paged"] and lay["shown"].size() == d.BAR_MAX - 1 and lay["pages"] == 3,
 		"bottle bar pages through %d kinds of bottle" % Data.potion_order.size())
 	d.queue_free()
+
+	# Saving: the game saves at the start of each day and resumes there.
+	Data.reset_game()
+	Data.day = 7
+	Data.inventory["morel"] = 5
+	Data.bottles["frost"] = 2
+	Data.discovered["frost"] = true
+	Data.seen_creatures["moth"] = true
+	Data.save_game()
+	Data.reset_game()
+	check(Data.load_game() and Data.day == 7 and Data.inventory["morel"] == 5 and Data.bottles["frost"] == 2
+		and Data.discovered.has("frost") and Data.seen_creatures.has("moth"), "a save loads back to the same day and stock")
+	Data.clear_save()
+	check(not Data.load_game(), "with no save, the game starts fresh")
 
 	print("DONE: %d failure(s)" % failures)
 	get_tree().quit(1 if failures > 0 else 0)
