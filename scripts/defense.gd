@@ -52,6 +52,10 @@ var fireflies := []
 var spawned := 0
 var queue := []
 var group_left := 0
+## Creatures that joined mid-night (boss, summons, splits), on top of the queue.
+var extra := 0
+var boss_spawned := false
+var boss_ref := {}
 var intro := {}
 var bar_page := 0
 var loot := []
@@ -321,6 +325,13 @@ func _night_step(delta: float) -> void:
 			if not Data.seen_creatures.has(kind):
 				Data.seen_creatures[kind] = true
 				intro = {"kind": kind, "t": 0.0}
+	if cfg.get("boss", "") != "" and not boss_spawned and spawned >= cfg["count"] / 2:
+		boss_spawned = true
+		boss_ref = _make_enemy(cfg["boss"], randi() % 2)
+		enemies.append(boss_ref)
+		extra += 1
+		intro = {"kind": cfg["boss"], "t": 0.0}
+		shake = maxf(shake, 0.4)
 
 	for s in slots:
 		if s["trap"] != "" and not s["triggered"]:
@@ -334,6 +345,7 @@ func _night_step(delta: float) -> void:
 		a["time"] -= delta
 	areas = areas.filter(func(a): return a["time"] > 0.0)
 
+	var spawned_children := []
 	for e in enemies:
 		if e["flee"] >= 0.0:
 			e["flee"] += delta
@@ -350,7 +362,7 @@ func _night_step(delta: float) -> void:
 		for a in areas:
 			if e["pos"].distance_to(a["pos"]) < a["radius"]:
 				var d: Dictionary = Data.potion_stats(a["id"])
-				if d["family"] == "ember":
+				if d["family"] == "ember" or d["family"] in info.get("resist", []):
 					continue
 				if info["flying"] and not d.get("flying", true):
 					continue
@@ -377,7 +389,22 @@ func _night_step(delta: float) -> void:
 			_scare(e)
 			repelled += 1
 			_drop_loot(e)
+			for i in int(info.get("split", 0)):
+				var child := _make_enemy(info["split_kind"], e["path"])
+				child["offset"] = maxf(0.0, e["offset"] - 10.0 - i * 18.0)
+				child["pos"] = curves[e["path"]].sample_baked(child["offset"])
+				spawned_children.append(child)
 			continue
+		if info.has("summon"):
+			e["summon_t"] = e.get("summon_t", info["summon"]["every"]) - delta
+			if e["summon_t"] <= 0.0:
+				e["summon_t"] = info["summon"]["every"]
+				for i in int(info["summon"]["count"]):
+					var minion := _make_enemy(info["summon"]["kind"], e["path"])
+					minion["offset"] = maxf(0.0, e["offset"] - 30.0 - i * 24.0)
+					minion["pos"] = curves[e["path"]].sample_baked(minion["offset"])
+					spawned_children.append(minion)
+				_burst(e["pos"], Color(0.8, 0.6, 1.0), 14, 150.0)
 		var c: Curve2D = curves[e["path"]]
 		e["offset"] = maxf(0.0, e["offset"] + e["speed"] * slow * delta)
 		if e["offset"] >= c.get_baked_length():
@@ -407,10 +434,13 @@ func _night_step(delta: float) -> void:
 		else:
 			e["pos"] = c.sample_baked(e["offset"])
 	enemies = enemies.filter(func(e): return e["flee"] < 1.0)
+	enemies.append_array(spawned_children)
+	extra += spawned_children.size()
 
+	var boss_pending: bool = cfg.get("boss", "") != "" and not boss_spawned
 	if hut_hp <= 0:
 		_end(false)
-	elif spawned >= cfg["count"] and enemies.is_empty():
+	elif spawned >= cfg["count"] and not boss_pending and enemies.is_empty():
 		_end(true)
 
 
@@ -427,16 +457,20 @@ func _drop_loot(e: Dictionary) -> void:
 			"to": COIN_ICON})
 	var text := "+%d" % gained
 	if randf() < float(info["bone_chance"]):
-		Data.bones += 1
-		bones_earned += 1
-		loot.append({"kind": "bone", "from": from, "t": -0.1, "to": BONE_ICON})
-		text += "  Bone!"
+		var n_bones := int(info.get("bones", 1))
+		Data.bones += n_bones
+		bones_earned += n_bones
+		for i in n_bones:
+			loot.append({"kind": "bone", "from": from, "t": -0.1 - i * 0.1, "to": BONE_ICON})
+		text += "  Bone!" if n_bones == 1 else "  %d bones!" % n_bones
 	_popup(text, from, Color("f5c04a"))
 
 
 func _make_enemy(kind: String, path: int) -> Dictionary:
 	var info: Dictionary = Data.creatures[kind]
 	var courage: float = cfg["courage"] * info["courage"]
+	if info.get("boss", false):
+		courage = info["courage"] * cfg["courage"] * 0.5 * cfg.get("boss_scale", 1.0)
 	return {"kind": kind, "path": path, "offset": 0.0, "pos": curves[path].sample_baked(0.0),
 		"courage": courage, "max": courage, "speed": cfg["speed"] * info["speed"] * randf_range(0.9, 1.15),
 		"flee": -1.0, "dir": Vector2.UP, "seed": randf() * 10.0, "hurt": 0.0, "drowsy": false, "stuck": false,
@@ -472,7 +506,10 @@ func _spawn_area(id: String, pos: Vector2) -> void:
 	if burst > 0.0:
 		for e in enemies:
 			if e["flee"] < 0.0 and e["pos"].distance_to(pos) < d["radius"]:
-				e["courage"] -= burst
+				var info: Dictionary = Data.creatures[e["kind"]]
+				if d["family"] in info.get("resist", []):
+					continue
+				e["courage"] -= burst * (1.0 - float(info.get("armor", 0.0)))
 				e["hurt"] = 0.35
 
 
@@ -589,7 +626,7 @@ func _roar() -> void:
 	shake = 0.5
 	for e in enemies:
 		if e["flee"] < 0.0:
-			e["courage"] -= burst
+			e["courage"] -= burst * (1.0 - float(Data.creatures[e["kind"]].get("armor", 0.0)))
 			e["hurt"] = 0.4
 	_popup("ROAR!", HUT + Vector2(0, -190), Color("f0c060"))
 
@@ -1112,22 +1149,28 @@ func _paint_ui(ci: CanvasItem) -> void:
 	status_box.draw(rid, status)
 	if mode == "fortify":
 		# Tonight's roster: an icon and count per creature type; a sparkle marks new ones.
-		ci.draw_string(font, Vector2(30, 148), "Night %d:" % Data.day, HORIZONTAL_ALIGNMENT_LEFT, -1, 22, Data.parchment)
-		var x := 130.0
-		for kind in Data.creature_order:
-			var n: int = cfg["waves"].get(kind, 0)
-			if n == 0:
-				continue
-			Art.creature(ci, kind, Vector2(x, 150.0 if kind != "moth" else 160.0), 26.0, 1.0, t, false)
-			ci.draw_string(font, Vector2(x + 18, 148), "x%d" % n, HORIZONTAL_ALIGNMENT_LEFT, -1, 20, Data.parchment)
+		ci.draw_string(font, Vector2(24, 148), "N%d" % Data.day, HORIZONTAL_ALIGNMENT_LEFT, -1, 22, Data.parchment)
+		var kinds: Array = Data.creature_order.filter(func(k): return cfg["waves"].get(k, 0) > 0)
+		if cfg.get("boss", "") != "":
+			kinds.append(cfg["boss"])
+		var step := minf(96.0, 500.0 / maxf(1.0, kinds.size()))
+		var x := 92.0
+		for kind in kinds:
+			var boss: bool = Data.creatures[kind].get("boss", false)
+			var flying: bool = Data.creatures[kind]["flying"]
+			Art.creature(ci, kind, Vector2(x, 160.0 if flying else 150.0), 24.0 if not boss else 30.0, 1.0, t, false)
+			var label := "BOSS" if boss else "%d" % int(cfg["waves"][kind])
+			ci.draw_string(font, Vector2(x + 14, 148), label, HORIZONTAL_ALIGNMENT_LEFT, -1, 16 if boss else 19,
+				Color("ff8a6b") if boss else Data.parchment)
 			if not Data.seen_creatures.has(kind):
-				Art.sparkle(ci, Vector2(x + 16, 126), 7.0 + sin(t * 6.0) * 2.0, Data.magic.lightened(0.3))
-			x += 100.0
+				Art.sparkle(ci, Vector2(x + 14, 126), 7.0 + sin(t * 6.0) * 2.0, Data.magic.lightened(0.3))
+			x += step
 	else:
 		for i in Data.HUT_HP:
 			Art.heart(ci, Vector2(36 + i * 26, 140), 19, Color("ff7a6b") if i < hut_hp else Color(1, 1, 1, 0.15))
 		Art.creature(ci, "mischief", Vector2(318, 150), 22.0, 1.0, 0.0, false)
-		ci.draw_string(font, Vector2(334, 148), "%d/%d" % [repelled, cfg["count"]], HORIZONTAL_ALIGNMENT_LEFT, -1, 20, Data.parchment)
+		ci.draw_string(font, Vector2(334, 148), "%d/%d" % [repelled, total_creatures()], HORIZONTAL_ALIGNMENT_LEFT, -1, 20, Data.parchment)
+		_paint_boss_bar(ci, rid, font)
 	if mode == "night":
 		Art.coin(ci, COIN_ICON, 24)
 		ci.draw_string(font, COIN_ICON + Vector2(16, 8), str(Data.coins), HORIZONTAL_ALIGNMENT_LEFT, -1, 20, Data.parchment)
@@ -1186,6 +1229,27 @@ func _paint_ui(ci: CanvasItem) -> void:
 			Color(1, 1, 1, 0.5))
 
 
+## Everyone expected tonight: the queue, plus the boss and anything that
+## joined mid-night (summons and splits).
+func total_creatures() -> int:
+	var boss_pending: bool = cfg.get("boss", "") != "" and not boss_spawned
+	return cfg["count"] + extra + (1 if boss_pending else 0)
+
+
+## A health bar across the top while a boss is on the map.
+func _paint_boss_bar(ci: CanvasItem, rid: RID, font: Font) -> void:
+	if boss_ref.is_empty() or boss_ref["flee"] >= 0.0 or not enemies.has(boss_ref):
+		return
+	var bar := Rect2(60, 170, 600, 22)
+	status_box.draw(rid, bar.grow(6))
+	var f: float = clampf(boss_ref["courage"] / boss_ref["max"], 0.0, 1.0)
+	ci.draw_rect(Rect2(bar.position, Vector2(bar.size.x * f, bar.size.y)), Color("c8402a"))
+	ci.draw_rect(Rect2(bar.position, Vector2(bar.size.x * f, 5)), Color(1, 1, 1, 0.25))
+	var boss_name: String = Data.creatures[boss_ref["kind"]]["name"]
+	ci.draw_string_outline(font, bar.position + Vector2(0, 18), boss_name, HORIZONTAL_ALIGNMENT_CENTER, bar.size.x, 17, 4, Color(0, 0, 0, 0.7))
+	ci.draw_string(font, bar.position + Vector2(0, 18), boss_name, HORIZONTAL_ALIGNMENT_CENTER, bar.size.x, 17, Color.WHITE)
+
+
 ## Banner that introduces a creature type the first time it appears.
 func _paint_intro(ci: CanvasItem, rid: RID, font: Font) -> void:
 	var it: float = intro["t"]
@@ -1199,9 +1263,12 @@ func _paint_intro(ci: CanvasItem, rid: RID, font: Font) -> void:
 	style.bg_color = Color(0.06, 0.05, 0.12, 0.85 * a)
 	style.border_color = Art.fade(Data.magic, 0.6 * a)
 	style.draw(rid, box)
-	var s: float = info["size"]
-	Art.creature(ci, kind, box.position + Vector2(62, 62 if kind != "moth" else 76), s * 1.05, a, t, false)
-	ci.draw_string(font, box.position + Vector2(120, 38), "New: " + info["name"], HORIZONTAL_ALIGNMENT_LEFT, -1, 26,
-		Art.fade(Data.magic.lightened(0.3), a))
+	var s: float = minf(info["size"] * 1.05, 64.0)
+	var boss: bool = info.get("boss", false)
+	if boss:
+		style.border_color = Color(0.9, 0.3, 0.2, 0.9 * a)
+	Art.creature(ci, kind, box.position + Vector2(62, 76 if info["flying"] else 64), s, a, t, false)
+	ci.draw_string(font, box.position + Vector2(120, 38), ("BOSS: " if boss else "New: ") + info["name"], HORIZONTAL_ALIGNMENT_LEFT, -1, 26,
+		Art.fade(Color("ff8a6b") if boss else Data.magic.lightened(0.3), a))
 	ci.draw_string(font, box.position + Vector2(120, 70), info["desc"], HORIZONTAL_ALIGNMENT_LEFT, 510, 18,
 		Art.fade(Data.parchment, a))

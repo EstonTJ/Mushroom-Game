@@ -432,6 +432,29 @@ static func creature(ci: CanvasItem, kind: String, pos: Vector2, s: float, a: fl
 			_stumpling(ci, pos, s, a, t, blink)
 		"moth":
 			_moth(ci, pos, s, a, t, blink)
+		"thornback":
+			_thornback(ci, pos, s, a, t, blink)
+		"wisp":
+			_wisp(ci, pos, s, a, t, blink)
+		"puffling":
+			_puffling(ci, pos, s, a, t, blink)
+		"troll":
+			_troll(ci, pos, s, a, t, blink)
+		"mischief_king":
+			glow(ci, pos + Vector2(0, -s * 0.3), s * 0.9, Color(0.6, 0.3, 0.9, 0.3 * a))
+			_mischief(ci, pos, s, a, t, blink)
+			ci.draw_polyline(PackedVector2Array([pos + Vector2(-s * 0.5, s * 0.36), pos + Vector2(s * 0.5, s * 0.36)]), fade(Color("f5c04a"), a), s * 0.04, true)
+			crown(ci, pos + Vector2(s * 0.12, -s * 0.86), s * 0.34, a)
+		"moth_queen":
+			glow(ci, pos + Vector2(0, moth_lift(s, t)), s * 0.9, Color(0.9, 0.7, 1.0, 0.3 * a))
+			_moth(ci, pos, s, a, t, blink)
+			crown(ci, pos + Vector2(0, moth_lift(s, t) - s * 0.4), s * 0.22, a)
+		"elder_stumpling":
+			glow(ci, pos, s * 0.8, Color(0.4, 0.9, 0.5, 0.25 * a))
+			_stumpling(ci, pos, s, a, t, blink)
+			for k in 3:
+				ci.draw_colored_polygon(ellipse(pos + Vector2(-s * 0.3 + k * s * 0.3, s * 0.3), s * 0.12, s * 0.05, 10), fade(Color("6f9a4a"), a))
+			crown(ci, pos + Vector2(-s * 0.05, -s * 0.5), s * 0.3, a)
 		_:
 			_mischief(ci, pos, s, a, t, blink)
 
@@ -439,6 +462,22 @@ static func creature(ci: CanvasItem, kind: String, pos: Vector2, s: float, a: fl
 ## Where each creature's eyes are, so a light layer can make them glow.
 static func creature_eyes(kind: String, pos: Vector2, s: float, t: float) -> Array:
 	match kind:
+		"thornback":
+			var h := pos + Vector2(-s * 0.44, s * 0.02)
+			return [h + Vector2(-s * 0.02, -s * 0.08), h + Vector2(s * 0.09, -s * 0.06)]
+		"wisp":
+			var c := pos + Vector2(0, -s * 0.5 + sin(t * 3.0) * s * 0.06)
+			return [c + Vector2(-s * 0.08, s * 0.04), c + Vector2(s * 0.08, s * 0.04)]
+		"puffling":
+			return [pos + Vector2(-s * 0.1, -s * 0.12), pos + Vector2(s * 0.1, -s * 0.12)]
+		"troll":
+			return [pos + Vector2(-s * 0.1, -s * 0.18), pos + Vector2(s * 0.1, -s * 0.18)]
+		"mischief_king":
+			return creature_eyes("mischief", pos, s, t)
+		"moth_queen":
+			return creature_eyes("moth", pos, s, t)
+		"elder_stumpling":
+			return creature_eyes("stumpling", pos, s, t)
 		"scuttler":
 			return [pos + Vector2(-s * 0.07, -s * 0.37), pos + Vector2(s * 0.07, -s * 0.37)]
 		"stumpling":
@@ -614,6 +653,127 @@ static func _moth(ci: CanvasItem, pos: Vector2, s: float, a: float, t: float, bl
 			ci.draw_line(at, at + Vector2(side * s * 0.05, s * 0.03), ink, 1.0, true)
 	ci.draw_circle(head, s * 0.11, fade(Color("3a2e44"), a))
 	_eyes(ci, creature_eyes("moth", pos, s, t), s * 0.04, Color("ffd66b"), blink, a, line_w)
+
+
+## Armoured beetle-boar: overlapping plates, back spikes, tusks, stubby legs.
+static func _thornback(ci: CanvasItem, pos: Vector2, s: float, a: float, t: float, blink: bool) -> void:
+	var shell := fade(Color("4a4a32"), a)
+	var dark := fade(Color("22221a"), a)
+	var line_w := maxf(1.5, s * 0.045)
+	var step := sin(t * 11.0)
+	shadow(ci, pos + Vector2(0, s * 0.42), s * 0.56, s * 0.12, a)
+	for k in 4:
+		var side := -1.0 if k < 2 else 1.0
+		var lx := side * s * (0.18 + (k % 2) * 0.2)
+		var lift := maxf(0.0, step * side * (1.0 if k % 2 == 0 else -1.0)) * s * 0.06
+		ci.draw_rect(Rect2(pos.x + lx - s * 0.06, pos.y + s * 0.18 - lift, s * 0.12, s * 0.22), dark)
+	var body := ellipse(pos, s * 0.52, s * 0.36, 28)
+	ci.draw_colored_polygon(body, shell)
+	for k in 3:
+		var y := -s * 0.2 + k * s * 0.16
+		ci.draw_arc(pos + Vector2(s * 0.05, y), s * (0.46 - k * 0.04), PI * 1.08, PI * 1.92, 16, fade(Color("6a6a44"), a), line_w * 1.3, true)
+	for k in 5:
+		var x := -s * 0.3 + k * s * 0.15
+		var base_y := pos.y - s * 0.3 + absf(x) * 0.25
+		ci.draw_colored_polygon(PackedVector2Array([Vector2(pos.x + x - s * 0.06, base_y), Vector2(pos.x + x, base_y - s * 0.2),
+			Vector2(pos.x + x + s * 0.06, base_y)]), fade(Color("8a8a5a"), a))
+	outline(ci, body, dark, line_w)
+	var head := pos + Vector2(-s * 0.44, s * 0.02)
+	ci.draw_circle(head, s * 0.2, fade(Color("3a3a26"), a))
+	ci.draw_circle(head + Vector2(-s * 0.14, s * 0.05), s * 0.08, fade(Color("5a4a3a"), a))
+	for sd in [-1.0, 1.0]:
+		ci.draw_polyline(PackedVector2Array([head + Vector2(-s * 0.1, s * 0.08 * sd + s * 0.06), head + Vector2(-s * 0.24, s * 0.02 * sd - s * 0.04)]),
+			fade(Color("efe6d0"), a), line_w * 1.2, true)
+	_eyes(ci, creature_eyes("thornback", pos, s, t), s * 0.05, Color("ff9a4a"), blink, a, line_w)
+
+
+## Will-o'-wisp: a flickering teal flame floating above a faint glow.
+static func _wisp(ci: CanvasItem, pos: Vector2, s: float, a: float, t: float, blink: bool) -> void:
+	var c := pos + Vector2(0, -s * 0.5 + sin(t * 3.0) * s * 0.06)
+	shadow(ci, pos + Vector2(0, s * 0.4), s * 0.26, s * 0.06, 0.5 * a)
+	glow(ci, c, s * 0.9, fade(Color("7af0e0"), 0.35 * a))
+	for layer in 3:
+		var sc := 1.0 - layer * 0.28
+		var col: Color = [Color("3ab8b0"), Color("7af0e0"), Color("e8fffa")][layer]
+		var pts := PackedVector2Array()
+		for j in 20:
+			var ang := TAU * j / 20.0
+			var r := s * 0.34 * sc
+			var p := Vector2(cos(ang) * r, sin(ang) * r * 0.9 + s * 0.08)
+			if p.y < 0.0:
+				p.y *= 1.0 + 1.4 * (1.0 - absf(cos(ang))) + 0.25 * sin(t * 12.0 + j + layer)
+				p.x += sin(t * 7.0 + p.y * 0.1) * s * 0.04
+			pts.append(c + p)
+		ci.draw_colored_polygon(pts, fade(col, a))
+	_eyes(ci, creature_eyes("wisp", pos, s, t), s * 0.05, Color("1a2a38"), blink, a, maxf(1.5, s * 0.04))
+
+
+## Puffling: a grumpy walking puffball on little legs, puffing spores.
+static func _puffling(ci: CanvasItem, pos: Vector2, s: float, a: float, t: float, blink: bool) -> void:
+	var step := sin(t * 12.0)
+	var line_w := maxf(1.5, s * 0.04)
+	for sd in [-1.0, 1.0]:
+		var lift := maxf(0.0, step * sd) * s * 0.07
+		ci.draw_line(pos + Vector2(sd * s * 0.14, s * 0.2), pos + Vector2(sd * s * 0.18, s * 0.42 - lift), fade(Color("6a5a3a"), a), line_w * 2.0, true)
+	_puffball(ci, pos + Vector2(0, s * 0.18), s * 0.95, a)
+	var face := pos + Vector2(0, -s * 0.06)
+	for sd in [-1.0, 1.0]:
+		ci.draw_line(face + Vector2(sd * s * 0.2, -s * 0.12), face + Vector2(sd * s * 0.06, -s * 0.07), fade(Color("5a4a2a"), a), line_w, true)
+	_eyes(ci, creature_eyes("puffling", pos, s, t), s * 0.05, Color("3a2a1a"), blink, a, line_w)
+	ci.draw_arc(face + Vector2(0, s * 0.1), s * 0.07, PI + 0.4, TAU - 0.4, 8, fade(Color("5a4a2a"), a), line_w, true)
+	for k in 3:
+		var ph := fmod(t * 0.9 + k * 0.33, 1.0)
+		ci.draw_circle(pos + Vector2(sin(k * 2.0) * s * 0.1, -s * 0.5 - ph * s * 0.4), s * 0.04 * (1.0 - ph) + 1.0, fade(Color("c8b890"), (1.0 - ph) * a))
+
+
+## Bramble troll: huge, hunched and mossy, with thorny horns and long arms.
+static func _troll(ci: CanvasItem, pos: Vector2, s: float, a: float, t: float, blink: bool) -> void:
+	var skin := fade(Color("4a5a3a"), a)
+	var dark := fade(Color("1e261a"), a)
+	var line_w := maxf(2.0, s * 0.03)
+	var step := sin(t * 5.0)
+	shadow(ci, pos + Vector2(0, s * 0.46), s * 0.55, s * 0.1, a)
+	for sd in [-1.0, 1.0]:
+		var lift := maxf(0.0, step * sd) * s * 0.05
+		ci.draw_rect(Rect2(pos.x + sd * s * 0.2 - s * 0.09, pos.y + s * 0.2 - lift, s * 0.18, s * 0.26), dark)
+	for sd in [-1.0, 1.0]:
+		var sh := pos + Vector2(sd * s * 0.36, -s * 0.18)
+		var hand := sh + Vector2(sd * s * 0.12, s * 0.5 + step * sd * s * 0.04)
+		ci.draw_line(sh, hand, skin, s * 0.14, true)
+		ci.draw_circle(hand, s * 0.1, fade(Color("3a4a2e"), a))
+	var body := PackedVector2Array()
+	for j in 24:
+		var ang := TAU * j / 24.0
+		var r := 1.0 + 0.08 * sin(ang * 5.0)
+		body.append(pos + Vector2(cos(ang) * s * 0.42 * r, sin(ang) * s * 0.44 * r - s * 0.08))
+	ci.draw_colored_polygon(body, skin)
+	for m in [Vector2(-0.18, -0.3), Vector2(0.2, -0.1), Vector2(-0.1, 0.1)]:
+		ci.draw_colored_polygon(ellipse(pos + m * s, s * 0.12, s * 0.07, 12), fade(Color("6f9a4a"), a))
+	outline(ci, body, dark, line_w)
+	for sd in [-1.0, 1.0]:
+		var base := pos + Vector2(sd * s * 0.2, -s * 0.46)
+		var tip := base + Vector2(sd * s * 0.16, -s * 0.26)
+		ci.draw_line(base, tip, fade(Color("5a3a26"), a), s * 0.06, true)
+		for k in 3:
+			var at := base.lerp(tip, 0.3 + k * 0.25)
+			ci.draw_colored_polygon(PackedVector2Array([at, at + Vector2(-sd * s * 0.07, -s * 0.03), at + Vector2(0, -s * 0.05)]), fade(Color("5a3a26"), a))
+	var brow := pos + Vector2(0, -s * 0.22)
+	ci.draw_line(brow + Vector2(-s * 0.2, -s * 0.02), brow + Vector2(s * 0.2, -s * 0.02), dark, line_w * 2.0, true)
+	_eyes(ci, creature_eyes("troll", pos, s, t), s * 0.04, Color("ffb04a"), blink, a, line_w)
+	ci.draw_polyline(PackedVector2Array([pos + Vector2(-s * 0.12, -s * 0.02), pos + Vector2(-s * 0.04, s * 0.02), pos + Vector2(s * 0.04, -s * 0.01),
+		pos + Vector2(s * 0.12, s * 0.02)]), dark, line_w, true)
+	_fly_agaric(ci, pos + Vector2(s * 0.3, -s * 0.3), s * 0.2, a)
+
+
+## A small golden crown, for bosses.
+static func crown(ci: CanvasItem, pos: Vector2, s: float, a: float = 1.0) -> void:
+	var gold := fade(Color("f5c04a"), a)
+	var pts := PackedVector2Array([pos + Vector2(-s * 0.5, 0), pos + Vector2(-s * 0.5, -s * 0.5), pos + Vector2(-s * 0.25, -s * 0.2),
+		pos + Vector2(0, -s * 0.6), pos + Vector2(s * 0.25, -s * 0.2), pos + Vector2(s * 0.5, -s * 0.5), pos + Vector2(s * 0.5, 0)])
+	ci.draw_colored_polygon(pts, gold)
+	outline(ci, pts, fade(Color("8a5a1a"), a), maxf(1.5, s * 0.06))
+	for k in 3:
+		ci.draw_circle(pos + Vector2(-s * 0.3 + k * s * 0.3, -s * 0.12), s * 0.07, fade([Color("d83a4a"), Color("4a7ad8"), Color("d83a4a")][k], a))
 
 
 ## Storybook witch's cottage. pos is the middle of the doorstep; s is the size.

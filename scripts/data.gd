@@ -189,26 +189,52 @@ var potions := {
 }
 
 # Creature types. speed and courage multiply the night's base values.
-# coins and bone_chance: loot when a creature is scared off by a potion
-# (not when it's blocked by a ward).
 # flying: skips ground traps and most puddles. heavy: syrup only halves its speed.
 # damage: hut hits (or ward charges) it costs when it reaches the hut.
-# first_night: the night this type starts turning up; share: its part of the
-# night's creatures once it has fully arrived.
-var creature_order := ["mischief", "scuttler", "stumpling", "moth"]
+# armor: share of burst damage it shrugs off. resist: potion families that do
+# nothing to it. split: on being scared off it bursts into this many of
+# split_kind. first_night: the night it starts turning up; share: its part of
+# the night's creatures once it has fully arrived. coins and bone_chance: loot
+# when scared off by a potion (not when blocked by a ward).
+# Bosses (boss: true) come alone, one every 3rd night, with a health bar and
+# summon: {kind, every (seconds), count} minions as they walk.
+var creature_order := ["mischief", "scuttler", "stumpling", "moth", "thornback", "wisp", "puffling", "troll"]
+var boss_order := ["mischief_king", "moth_queen", "elder_stumpling"]
 var creatures := {
 	"mischief": {"name": "Mischief", "desc": "A hooded prankster.",
 		"speed": 1.0, "courage": 1.0, "size": 42.0, "flying": false, "heavy": false, "damage": 1,
 		"first_night": 1, "share": 0.0, "coins": 2, "bone_chance": 0.3},
 	"scuttler": {"name": "Scuttler", "desc": "Fast but timid. Comes in pairs.",
 		"speed": 1.7, "courage": 0.5, "size": 34.0, "flying": false, "heavy": false, "damage": 1,
-		"first_night": 3, "share": 0.25, "coins": 1, "bone_chance": 0.2},
+		"first_night": 3, "share": 0.2, "coins": 1, "bone_chance": 0.2},
 	"stumpling": {"name": "Stumpling", "desc": "Slow and stubborn. Too heavy to stick. Hits twice as hard.",
 		"speed": 0.6, "courage": 2.0, "size": 58.0, "flying": false, "heavy": true, "damage": 2,
-		"first_night": 9, "share": 0.15, "coins": 5, "bone_chance": 1.0},
+		"first_night": 9, "share": 0.1, "coins": 5, "bone_chance": 1.0},
 	"moth": {"name": "Dusk Moth", "desc": "Flies over traps and syrup. Throw at it!",
 		"speed": 1.15, "courage": 0.8, "size": 46.0, "flying": true, "heavy": false, "damage": 1,
-		"first_night": 6, "share": 0.15, "coins": 3, "bone_chance": 0.4},
+		"first_night": 6, "share": 0.12, "coins": 3, "bone_chance": 0.4},
+	"thornback": {"name": "Thornback", "desc": "Armoured: bursts only do half. Wear it down with spores and syrup.",
+		"speed": 0.85, "courage": 1.6, "size": 52.0, "flying": false, "heavy": true, "damage": 2, "armor": 0.5,
+		"first_night": 12, "share": 0.1, "coins": 4, "bone_chance": 0.5},
+	"wisp": {"name": "Will-o'-Wisp", "desc": "A fast floating flame. It doesn't breathe, so spores do nothing.",
+		"speed": 1.5, "courage": 0.9, "size": 40.0, "flying": true, "heavy": false, "damage": 1, "resist": ["spore"],
+		"first_night": 15, "share": 0.1, "coins": 3, "bone_chance": 0.3},
+	"puffling": {"name": "Puffling", "desc": "A walking puffball. Scare it and it bursts into two Scuttlers!",
+		"speed": 0.9, "courage": 1.3, "size": 46.0, "flying": false, "heavy": false, "damage": 1,
+		"split": 2, "split_kind": "scuttler",
+		"first_night": 18, "share": 0.08, "coins": 2, "bone_chance": 0.2},
+	"troll": {"name": "Bramble Troll", "desc": "Huge and mossy. Too heavy to stick, tough, and it hits three times.",
+		"speed": 0.45, "courage": 3.5, "size": 80.0, "flying": false, "heavy": true, "damage": 3, "armor": 0.25,
+		"first_night": 21, "share": 0.06, "coins": 8, "bone_chance": 1.0},
+	"mischief_king": {"name": "The Mischief King", "desc": "Boss! He summons Mischief as he marches.", "boss": true,
+		"speed": 0.55, "courage": 14.0, "size": 96.0, "flying": false, "heavy": true, "damage": 4,
+		"summon": {"kind": "mischief", "every": 4.0, "count": 2}, "coins": 25, "bone_chance": 1.0, "bones": 3},
+	"moth_queen": {"name": "The Moth Queen", "desc": "Boss! She flies over traps and calls her moths.", "boss": true,
+		"speed": 0.6, "courage": 12.0, "size": 100.0, "flying": true, "heavy": false, "damage": 4,
+		"summon": {"kind": "moth", "every": 4.5, "count": 2}, "coins": 25, "bone_chance": 1.0, "bones": 3},
+	"elder_stumpling": {"name": "The Elder Stumpling", "desc": "Boss! Ancient, armoured and far too heavy to stick.", "boss": true,
+		"speed": 0.35, "courage": 20.0, "size": 110.0, "flying": false, "heavy": true, "damage": 5, "armor": 0.4,
+		"summon": {"kind": "stumpling", "every": 7.0, "count": 1}, "coins": 25, "bone_chance": 1.0, "bones": 3},
 }
 
 ## Lab upgrades sold at the dawn market. Bone Mortar lets a monster bone go
@@ -478,12 +504,28 @@ func potion_night(id: String) -> int:
 	return best
 
 
-## Settings for night n. Tuned to feel overwhelming: 7 creatures on night 1
-## and one more every night, arriving faster and in bunches ("group": up to
-## that many at once, 0.35 s apart, then a lull of 1.2-2x interval). New
-## creature types ease in (2 on their first night, full share by the third).
+## How many creatures come on night n: 10 on night 1, then 50% more on each
+## of the next three nights (15, 23, 34), then 2 more every night after.
+func night_count(n: int) -> int:
+	if n <= 4:
+		return int(round(10.0 * pow(1.5, n - 1)))
+	return 34 + 2 * (n - 4)
+
+
+## The boss for night n (every 3rd night, taking turns), or "" for none.
+func night_boss(n: int) -> String:
+	if n % 3 != 0:
+		return ""
+	return boss_order[(n / 3 - 1) % boss_order.size()]
+
+
+## Settings for night n: the count above, arriving faster and in bunches
+## ("group": up to that many at once, 0.35 s apart, then a lull of 1.2-2x
+## interval), a little faster and braver each night. New creature types ease in
+## (2 on their first night, full share by the third). On boss nights the boss
+## arrives halfway through; each time a boss returns it is tougher.
 func night_config(n: int) -> Dictionary:
-	var count := 7 + (n - 1)
+	var count := night_count(n)
 	var waves := {}
 	var used := 0
 	for kind in creature_order:
@@ -495,5 +537,6 @@ func night_config(n: int) -> Dictionary:
 		waves[kind] = k
 		used += k
 	waves["mischief"] = maxi(2, count - used)
-	return {"interval": maxf(0.75, 1.9 - (n - 1) * 0.03), "speed": minf(80.0, 56.0 + (n - 1) * 0.6),
-		"courage": 2.0 + (n - 1) * 0.08, "group": mini(5, 2 + floori((n - 1) / 5.0)), "waves": waves}
+	return {"interval": maxf(0.6, 1.6 - (n - 1) * 0.03), "speed": minf(80.0, 56.0 + (n - 1) * 0.6),
+		"courage": 2.0 + (n - 1) * 0.08, "group": mini(6, 3 + floori((n - 1) / 5.0)), "waves": waves,
+		"boss": night_boss(n), "boss_scale": 1.0 + 0.5 * floori((n - 1) / 9.0)}

@@ -90,14 +90,18 @@ func _ready() -> void:
 	def.canopy_layer.queue_redraw()
 	def.ward = 4
 	def.enemies = []
-	var lineup := [["mischief", 0, 330.0], ["scuttler", 0, 520.0], ["stumpling", 1, 300.0], ["moth", 1, 560.0],
-		["mischief", 1, 760.0], ["scuttler", 0, 740.0], ["mischief", 0, 150.0]]
+	var lineup := [["mischief", 0, 330.0], ["thornback", 0, 520.0], ["troll", 1, 300.0], ["wisp", 1, 560.0],
+		["puffling", 1, 760.0], ["scuttler", 0, 740.0], ["moth", 0, 150.0], ["mischief_king", 1, 120.0]]
 	for row in lineup:
 		var e: Dictionary = def._make_enemy(row[0], row[1])
 		e["offset"] = row[2]
 		e["pos"] = def.curves[row[1]].sample_baked(row[2])
 		e["courage"] = 99.0
 		def.enemies.append(e)
+	for e in def.enemies:
+		if e["kind"] == "mischief_king":
+			def.boss_ref = e
+			e["courage"] = e["max"] * 0.6
 	def._spawn_area("frost", def.curves[1].sample_baked(560.0))
 	def._spawn_area("befuddle", def.curves[0].sample_baked(330.0))
 	def._spawn_area("ink_pool", def.curves[1].sample_baked(300.0))

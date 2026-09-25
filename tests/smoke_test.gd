@@ -244,7 +244,13 @@ func _ready() -> void:
 	var n1 := Data.night_config(1)
 	var n12 := Data.night_config(12)
 	var n40 := Data.night_config(40)
-	check(n1["waves"].size() == 1 and n1["waves"]["mischief"] == 7, "night 1 is 7 Mischief")
+	check(n1["waves"].size() == 1 and n1["waves"]["mischief"] == 10, "night 1 is 10 Mischief")
+	check([Data.night_count(1), Data.night_count(2), Data.night_count(3), Data.night_count(4), Data.night_count(5)] == [10, 15, 23, 34, 36],
+		"10 on night 1, +50% for three nights (15, 23, 34), then +2 a night")
+	check(Data.night_boss(3) == "mischief_king" and Data.night_boss(6) == "moth_queen" and Data.night_boss(9) == "elder_stumpling"
+		and Data.night_boss(12) == "mischief_king" and Data.night_boss(4) == "", "a boss every 3rd night, taking turns")
+	check(Data.night_config(12)["waves"].has("thornback") and Data.night_config(21)["waves"].has("troll")
+		and not Data.night_config(11)["waves"].has("thornback"), "harder creature types arrive over time")
 	check(n12["waves"].has("scuttler") and n12["waves"].has("moth") and n12["waves"].has("stumpling"),
 		"by night 12 all four creature types come")
 	var total40 := 0
@@ -295,6 +301,39 @@ func _ready() -> void:
 	d._night_step(0.2)
 	check(imp["offset"] < 300.0 and imp["confused"], "Befuddle makes creatures walk backwards")
 
+	# Thornback armour halves bursts; wisps ignore spores; pufflings split.
+	var thorn: Dictionary = d._make_enemy("thornback", 1)
+	var imp2: Dictionary = d._make_enemy("mischief", 1)
+	for e in [thorn, imp2]:
+		e["offset"] = 400.0
+		e["pos"] = c1.sample_baked(400.0)
+		e["courage"] = 50.0
+	d.enemies = [thorn, imp2]
+	d.areas = []
+	d._spawn_area("ember", c1.sample_baked(400.0))
+	check(is_equal_approx(50.0 - thorn["courage"], (50.0 - imp2["courage"]) * 0.5), "Thornback armour halves burst damage")
+	var wisp: Dictionary = d._make_enemy("wisp", 1)
+	wisp["offset"] = 400.0
+	wisp["pos"] = c1.sample_baked(400.0)
+	wisp["courage"] = 5.0
+	d.enemies = [wisp]
+	d.areas = []
+	d._spawn_area("spore", c1.sample_baked(400.0))
+	d._night_step(0.5)
+	check(wisp["courage"] == 5.0 and not wisp["drowsy"], "a Will-o'-Wisp ignores spore clouds")
+	var puff: Dictionary = d._make_enemy("puffling", 1)
+	puff["offset"] = 400.0
+	puff["pos"] = c1.sample_baked(400.0)
+	puff["courage"] = 0.01
+	d.enemies = [puff]
+	d.areas = []
+	d._spawn_area("ember", c1.sample_baked(400.0))
+	d._night_step(0.05)
+	var kids: Array = d.enemies.filter(func(e): return e["kind"] == "scuttler")
+	check(kids.size() == 2, "a scared Puffling bursts into 2 Scuttlers")
+	d.enemies = []
+	d.areas = []
+
 	var hitter: Dictionary = d._make_enemy("stumpling", 1)
 	hitter["offset"] = c1.get_baked_length() - 0.1
 	d.enemies = [hitter]
@@ -326,6 +365,41 @@ func _ready() -> void:
 	check(is_equal_approx(d.areas[0]["radius"], Data.potion_stats("spore")["radius"] * 1.3), "an Empowered bottle lands with the bigger radius")
 	d.areas = []
 	d.ward = 0
+
+	# Bosses: night 3 brings the Mischief King halfway through; he summons
+	# minions, and the night can't be won until he's dealt with.
+	var bn = night_map(3)
+	check(bn.cfg["boss"] == "mischief_king" and bn.total_creatures() == bn.cfg["count"] + 1, "night 3 expects its creatures plus a boss")
+	bn.spawned = bn.cfg["count"] / 2
+	bn.spawn_timer = 1000.0
+	bn.enemies = []
+	bn._night_step(0.01)
+	check(bn.boss_spawned and bn.enemies.size() == 1 and bn.enemies[0]["kind"] == "mischief_king", "the boss arrives halfway through the night")
+	var king: Dictionary = bn.enemies[0]
+	king["offset"] = 200.0
+	king["pos"] = bn.curves[king["path"]].sample_baked(200.0)
+	bn._night_step(4.1)
+	check(bn.enemies.filter(func(e): return e["kind"] == "mischief").size() == 2, "the Mischief King summons Mischief as he marches")
+	check(king["max"] > 10.0, "a boss is much braver than its minions")
+	bn.spawned = bn.cfg["count"]
+	var coins0: int = Data.coins
+	var bones0: int = Data.bones
+	king["courage"] = 0.01
+	bn.enemies = [king]
+	bn._spawn_area("ember", king["pos"])
+	bn._night_step(0.05)
+	check(Data.coins == coins0 + 25 and Data.bones == bones0 + 3, "a defeated boss drops 25 coins and 3 bones")
+	bn.queue_free()
+	var bn2 = night_map(6)
+	bn2.enemies = []
+	bn2.spawned = bn2.cfg["count"]
+	bn2.boss_spawned = false
+	bn2.cfg["count"] = 0
+	bn2._night_step(0.01)
+	check(not bn2.over or bn2.boss_spawned, "a boss night can't end before the boss has come")
+	bn2.queue_free()
+	Data.day = 12
+	await frames(1)
 
 	# Hut potions and the roar.
 	Data.bottles["mend"] = 2
