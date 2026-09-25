@@ -5,7 +5,7 @@ extends Node
 
 ## Shown on the title screen and in the menu, so players can tell whether
 ## their browser has the latest update. Bump it with each release.
-const VERSION := "0.16"
+const VERSION := "0.17"
 const HUT_HP := 5
 const NIGHTS := 40
 ## When mushrooms unlock, in ingredient_order: three on night 1, one more on
@@ -504,6 +504,10 @@ func buy(item: String) -> bool:
 		return false
 	coins -= int(shop_items[item]["price"])
 	upgrades[item] = true
+	# Purchases are permanent: take the price off the start-of-day snapshot
+	# too, so losing the night and retrying doesn't refund it.
+	if _snapshot.has("coins"):
+		_snapshot["coins"] = maxi(0, int(_snapshot["coins"]) - int(shop_items[item]["price"]))
 	return true
 
 

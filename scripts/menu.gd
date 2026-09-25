@@ -7,13 +7,14 @@ signal guide_requested
 signal night_chosen(n: int)
 signal restart_confirmed
 signal title_requested
+signal market_requested
 
 const Art = preload("res://scripts/art.gd")
 
 const PANEL := Rect2(16, 30, 688, 1220)
 const CLOSE := Rect2(612, 46, 76, 64)
 const BACK := Rect2(32, 46, 120, 64)
-const MAIN_BUTTONS := ["Resume", "Field Guide", "Choose a night", "Title screen", "Start over"]
+const MAIN_BUTTONS := ["Resume", "Field Guide", "Choose a night", "Market", "Title screen", "Start over"]
 const COLS := 5
 const TILE := Vector2(120, 104)
 const GRID_TOP := 196.0
@@ -53,7 +54,7 @@ func open() -> void:
 
 
 func main_button(i: int) -> Rect2:
-	return Rect2(110, 320 + i * 118, 500, 92)
+	return Rect2(110, 300 + i * 104, 500, 86)
 
 
 func tile_rect(n: int) -> Rect2:
@@ -74,18 +75,21 @@ func tap(p: Vector2) -> void:
 				return
 			for i in MAIN_BUTTONS.size():
 				if main_button(i).has_point(p):
-					match i:
-						0:
+					match MAIN_BUTTONS[i]:
+						"Resume":
 							_close()
-						1:
+						"Field Guide":
 							visible = false
 							guide_requested.emit()
-						2:
+						"Choose a night":
 							page = "levels"
-						3:
+						"Market":
+							visible = false
+							market_requested.emit()
+						"Title screen":
 							visible = false
 							title_requested.emit()
-						4:
+						"Start over":
 							page = "confirm"
 					return
 		"levels":
@@ -153,7 +157,7 @@ func _draw_main(font: Font, rid: RID) -> void:
 	for i in MAIN_BUTTONS.size():
 		var r := main_button(i)
 		(danger_box if i == MAIN_BUTTONS.size() - 1 else button_box).draw(rid, r)
-		draw_string(font, r.position + Vector2(0, 62), MAIN_BUTTONS[i], HORIZONTAL_ALIGNMENT_CENTER, r.size.x, 32, Data.parchment)
+		draw_string(font, r.position + Vector2(0, 56), MAIN_BUTTONS[i], HORIZONTAL_ALIGNMENT_CENTER, r.size.x, 30, Data.parchment)
 	draw_string(font, Vector2(0, 950), "Day %d  ·  furthest reached: night %d" % [Data.day, maxi(Data.best_day, Data.day)],
 		HORIZONTAL_ALIGNMENT_CENTER, 720, 22, Color("6a5a48"))
 	Art.coin(self, Vector2(290, 1010), 28)

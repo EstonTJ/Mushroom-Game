@@ -7,14 +7,15 @@ signal continue_pressed
 signal new_game_pressed
 signal choose_pressed
 signal guide_pressed
+signal market_pressed
 
 const Art = preload("res://scripts/art.gd")
 const Baked = preload("res://scripts/baked.gd")
 
 const BUTTON_W := 460.0
-const BUTTON_H := 92.0
-const FIRST_Y := 772.0
-const GAP := 110.0
+const BUTTON_H := 82.0
+const FIRST_Y := 748.0
+const GAP := 94.0
 const YES := Rect2(120, 760, 220, 84)
 const NO := Rect2(380, 760, 220, 84)
 
@@ -70,6 +71,7 @@ func buttons() -> Array:
 	list.append("new")
 	if has_save:
 		list.append("choose")
+		list.append("market")
 	list.append("guide")
 	return list
 
@@ -105,6 +107,8 @@ func tap(p: Vector2) -> void:
 					choose_pressed.emit()
 				"guide":
 					guide_pressed.emit()
+				"market":
+					market_pressed.emit()
 			return
 
 
@@ -185,9 +189,9 @@ func _draw() -> void:
 		for i in list.size():
 			var r := button_rect(i)
 			var label: String = {"continue": "Continue  ·  Day %d" % save_day, "new": "New game", "choose": "Choose a night",
-				"guide": "Field Guide"}[list[i]]
+				"guide": "Field Guide", "market": "Market"}[list[i]]
 			(main_box if i == 0 else button_box).draw(rid, r)
-			draw_string(font, r.position + Vector2(0, 60), label, HORIZONTAL_ALIGNMENT_CENTER, r.size.x, 32, Color.WHITE)
+			draw_string(font, r.position + Vector2(0, 54), label, HORIZONTAL_ALIGNMENT_CENTER, r.size.x, 30, Color.WHITE)
 
 	if note != "":
 		draw_string_outline(font, Vector2(20, 1236), note, HORIZONTAL_ALIGNMENT_LEFT, 560, 16, 5, Color(0, 0, 0, 0.7))

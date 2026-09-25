@@ -527,8 +527,8 @@ func _ready() -> void:
 	var m2 = load("res://main.tscn").instantiate()
 	add_child(m2)
 	await frames(2)
-	check(m2.phase == "title" and m2.phase_node.buttons() == ["continue", "new", "choose", "guide"] and m2.phase_node.save_day == 5,
-		"with a save, the title offers Continue (day 5), New game, Choose a night and Field Guide")
+	check(m2.phase == "title" and m2.phase_node.buttons() == ["continue", "new", "choose", "market", "guide"] and m2.phase_node.save_day == 5,
+		"with a save, the title offers Continue (day 5), New game, Choose a night, Market and Field Guide")
 	m2.phase_node.tap(m2.phase_node.button_rect(0).get_center())
 	await frames(2)
 	check(m2.phase == "brew" and Data.day == 5 and Data.inventory["puffball"] == 6 and m2.hint.text.begins_with("Welcome back"),
@@ -573,18 +573,34 @@ func _ready() -> void:
 		"picking night 2 replays it and keeps the furthest night (5)")
 	check(Data.coins == 20, "replaying keeps coins and bones")
 	check(Data.load_game() and Data.day == 2 and Data.best_day == 5, "the replay and furthest night are saved")
+	# The market from the menu: opens on top, purchases stick through a retry.
 	m4.open_menu()
 	mn.tap(mn.main_button(3).get_center())
+	await frames(1)
+	var mk_over = m4.menu.get_parent().get_children().filter(func(c): return "overlay" in c and c.overlay)[0]
+	check(get_tree().paused and m4.phase == "forage", "Market opens from the menu over the game, paused")
+	Data.coins = 20
+	Data.take_snapshot()
+	Data.coins = 45
+	check(mk_over.try_buy("bone_mortar") and Data.coins == 15, "buying from the menu's market works")
+	Data.restore_snapshot()
+	check(Data.coins == 0 and Data.upgrades.has("bone_mortar"), "a purchase isn't refunded by Retry day")
+	mk_over.tap(mk_over.CLOSE.get_center())
+	await frames(1)
+	check(not get_tree().paused and m4.phase == "forage", "closing the market returns to the game")
+	Data.upgrades.erase("bone_mortar")
+	m4.open_menu()
+	mn.tap(mn.main_button(4).get_center())
 	await frames(2)
 	check(m4.phase == "title" and not get_tree().paused and m4.phase_node.save_day == 2, "the menu can go back to the title screen")
 	m4.continue_game()
 	await frames(1)
 	m4.open_menu()
-	mn.tap(mn.main_button(4).get_center())
+	mn.tap(mn.main_button(5).get_center())
 	check(mn.page == "confirm" and Data.day == 2, "Start over asks first")
 	mn.tap(mn.NO.get_center())
 	check(mn.page == "main" and Data.day == 2, "Cancel keeps the game")
-	mn.tap(mn.main_button(4).get_center())
+	mn.tap(mn.main_button(5).get_center())
 	mn.tap(mn.YES.get_center())
 	await frames(2)
 	check(Data.day == 1 and Data.best_day == 1 and Data.coins == 0 and m4.phase == "unlock" and not get_tree().paused,

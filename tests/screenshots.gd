@@ -198,4 +198,11 @@ func _ready() -> void:
 	mn.page = "levels"
 	await frames(4)
 	await shot("11_menu_nights")
+	mn.visible = false
+	var Shop2 = load("res://scripts/shop.gd")
+	var over = Shop2.new()
+	over.overlay = true
+	layer.add_child(over)
+	await frames(6)
+	await shot("12_market_overlay")
 	get_tree().quit()

@@ -3,12 +3,20 @@ extends Node2D
 ## lab upgrades. The first is the Bone Mortar, which lets monster bones go into
 ## the cauldron for Empowered potions.
 
+signal closed
+
 const Art = preload("res://scripts/art.gd")
+const CLOSE := Rect2(620, 16, 84, 64)
 
 const CARD_W := 640.0
 const CARD_H := 196.0
 const FIRST_CARD_Y := 540.0
 
+## Opened from the menu or title (on top of the game) rather than at dawn.
+var overlay := false
+## When opened as an overlay: the save checkpoint to rewrite after a purchase
+## ("" = don't save now; the next checkpoint will).
+var save_phase := ""
 var earned_coins := 0
 var earned_bones := 0
 var t := 0.0
@@ -21,6 +29,8 @@ var soon_box: StyleBoxFlat
 
 
 func _ready() -> void:
+	if overlay:
+		process_mode = Node.PROCESS_MODE_ALWAYS
 	card_box = _box(Color("efe3c8"), Color("8a6242"), 22, 5)
 	buy_box = _box(Color("4f8a44"), Color("2f5a30"), 14, 3)
 	soon_box = _box(Color(0.94, 0.89, 0.78, 0.55), Color(0.54, 0.38, 0.26, 0.5), 22, 3)
@@ -46,11 +56,25 @@ func buy_rect(i: int) -> Rect2:
 
 
 func _unhandled_input(event: InputEvent) -> void:
+	if overlay:
+		return
 	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
 		tap(get_global_mouse_position())
 
 
+## As an overlay the market takes every touch, so nothing reaches the game.
+func _input(event: InputEvent) -> void:
+	if not overlay:
+		return
+	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
+		tap(get_global_mouse_position())
+	get_viewport().set_input_as_handled()
+
+
 func tap(p: Vector2) -> void:
+	if overlay and CLOSE.has_point(p):
+		closed.emit()
+		return
 	for i in Data.shop_order.size():
 		if buy_rect(i).has_point(p):
 			try_buy(Data.shop_order[i])
@@ -70,7 +94,10 @@ func try_buy(item: String) -> bool:
 		for k in 40:
 			particles.append({"pos": at, "vel": Vector2.from_angle(randf() * TAU) * randf_range(120, 380), "life": randf_range(0.6, 1.2),
 				"max": 1.2, "color": [Color("ffd35a"), Color.WHITE, Color("8bc5c3")][k % 3]})
-		Data.save_game("market")
+		if not overlay:
+			Data.save_game("market")
+		elif save_phase != "":
+			Data.save_game(save_phase)
 	else:
 		message = "You need %d more coins." % (int(info["price"]) - Data.coins)
 	message_t = 0.0
@@ -102,6 +129,8 @@ func _draw() -> void:
 	Art.bone(self, purse.position + Vector2(170, 35), 44)
 	draw_string(font, purse.position + Vector2(200, 44), str(Data.bones), HORIZONTAL_ALIGNMENT_LEFT, -1, 28, Data.ink)
 	var earned := "Last night: +%d coins, +%d bones" % [earned_coins, earned_bones]
+	if overlay:
+		earned = "Open any time from the Menu"
 	draw_string(font, purse.position + Vector2(260, 44), earned, HORIZONTAL_ALIGNMENT_RIGHT, 360, 19, Color("6a5a48"))
 
 	for i in Data.shop_order.size():
@@ -123,6 +152,10 @@ func _draw() -> void:
 	for p in particles:
 		var f: float = p["life"] / p["max"]
 		Art.sparkle(self, p["pos"], 9.0 * f, Art.fade(p["color"], f))
+
+	if overlay:
+		card_box.draw(rid, CLOSE)
+		draw_string(font, CLOSE.position + Vector2(0, 44), "X", HORIZONTAL_ALIGNMENT_CENTER, CLOSE.size.x, 30, Data.ink)
 
 
 func _draw_item(font: Font, rid: RID, i: int, item: String) -> void:

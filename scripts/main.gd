@@ -73,6 +73,7 @@ func show_title() -> void:
 	title_node.new_game_pressed.connect(new_game)
 	title_node.choose_pressed.connect(func(): open_menu("levels"))
 	title_node.guide_pressed.connect(func(): open_guide())
+	title_node.market_pressed.connect(open_market)
 	_set_phase("title", title_node, "", "", "", Callable())
 
 
@@ -188,6 +189,7 @@ func _build_hud() -> void:
 	menu.night_chosen.connect(_on_night_chosen)
 	menu.restart_confirmed.connect(_on_restart)
 	menu.title_requested.connect(show_title)
+	menu.market_requested.connect(open_market)
 	guide_layer.add_child(menu)
 
 
@@ -205,6 +207,23 @@ func _on_guide_closed() -> void:
 func open_menu(on_page: String = "main") -> void:
 	menu.open()
 	menu.page = on_page
+	get_tree().paused = true
+
+
+## The market on top of whatever is on screen (from the menu or title),
+## pausing the game until it's closed.
+func open_market() -> void:
+	var shop := Shop.new()
+	shop.overlay = true
+	# From the title the loaded save is the current state, so a purchase can
+	# be saved at once; mid-game it's saved at the next checkpoint.
+	shop.save_phase = Data.saved_phase if phase == "title" else ""
+	shop.closed.connect(func():
+		shop.queue_free()
+		get_tree().paused = false
+		if phase == "title":
+			show_title())
+	menu.get_parent().add_child(shop)
 	get_tree().paused = true
 
 
