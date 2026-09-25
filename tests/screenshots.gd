@@ -47,6 +47,11 @@ func _ready() -> void:
 		brew._on_stir(brew.POT + Vector2(120, 0).rotated(k * 0.3))
 	await frames(5)
 	await shot("2_brew")
+	# Finish the stir and catch the new bottle mid-flight to the recipe book.
+	for k in 40:
+		brew._on_stir(brew.POT + Vector2(120, 0).rotated(9.0 + k * 0.3))
+	await frames(22)
+	await shot("2b_brew_result")
 
 	main._on_action()
 	await frames(3)
