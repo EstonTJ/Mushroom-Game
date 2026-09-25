@@ -1,6 +1,8 @@
 extends Node2D
-## Day phase 1: a short timed walk. Tap ingredients before they fade.
-## One Moonglow (the rare one) appears per walk, and it fades fast.
+## Day phase 1: a short timed walk. Tap mushrooms before they fade. Only the
+## mushrooms unlocked so far turn up; Ghost Fungus is the rare one (at most one
+## per walk, and it fades fast). Rocks and stumps take a few taps to clear and
+## often hide a mushroom, more likely a rare one.
 ##
 ## Drawing is split into stacked layers like the other screens: forest floor ->
 ## leaf shadows -> sun patches -> objects -> sunbeams and glows -> tree canopy
@@ -16,6 +18,9 @@ const MAX_ON_SCREEN := 6
 const BASKET_Y := 1110.0
 const FLY_TIME := 0.5
 const TRAIL := [Vector2(300, 100), Vector2(430, 380), Vector2(270, 700), Vector2(420, 1000), Vector2(340, 1140)]
+const STREAM := [Vector2(-30, 800), Vector2(190, 730), Vector2(430, 780), Vector2(750, 690)]
+const BANNER_TIME := 6.0
+const SAFETY := "Real wild mushrooms can be deadly. Never eat one you find."
 
 
 ## One drawing layer. It calls back into this script so all drawing stays here.
@@ -34,7 +39,9 @@ var flyers := []
 var bounce := {}
 var particles := []
 var butterflies := []
-var moonglow_spawned := false
+var rare_spawned := false
+var obstacles := []
+var banner := {}
 var done := false
 var t := 0.0
 var leaf_timer := 0.0
@@ -51,6 +58,12 @@ var logs := []
 var trees := []
 var shade_blobs := []
 var sun_spots := []
+var stream: Curve2D
+var stepping := []
+var bushes := []
+var trunks := []
+var clovers := []
+var speckles := []
 
 var floor_layer: Layer
 var shade_layer: Layer
@@ -87,6 +100,8 @@ func _ready() -> void:
 	light_over = _add_layer(_paint_light_over, true)
 	canopy_layer = _add_layer(_paint_canopy, false)
 	ui_layer = _add_layer(_paint_ui, false)
+	_place_obstacles()
+	_make_banner()
 	for i in 3:
 		_spawn()
 
@@ -111,6 +126,39 @@ func _build_scenery() -> void:
 		var next: Vector2 = TRAIL[mini(i + 1, TRAIL.size() - 1)]
 		var handle := (next - prev) * 0.22
 		trail.add_point(TRAIL[i], -handle, handle)
+
+	stream = Curve2D.new()
+	for i in STREAM.size():
+		var prev: Vector2 = STREAM[maxi(i - 1, 0)]
+		var next: Vector2 = STREAM[mini(i + 1, STREAM.size() - 1)]
+		var handle := (next - prev) * 0.3
+		stream.add_point(STREAM[i], -handle, handle)
+	# Stepping stones where the trail crosses the stream.
+	var best := Vector2.ZERO
+	var best_d := INF
+	for q in trail.get_baked_points():
+		var d := stream.get_closest_point(q).distance_to(q)
+		if d < best_d:
+			best_d = d
+			best = q
+	var along := trail.get_closest_offset(best)
+	for k in [-36.0, 0.0, 36.0]:
+		stepping.append(trail.sample_baked(along + k) + Vector2(rng.randf_range(-6, 6), 0))
+
+	for i in 400:
+		speckles.append({"pos": Vector2(rng.randf_range(0, 720), rng.randf_range(110, 1110)), "dark": rng.randf() < 0.5,
+			"r": rng.randf_range(1.0, 2.5)})
+	for i in 24:
+		clovers.append({"pos": Vector2(rng.randf_range(20, 700), rng.randf_range(140, 1100)), "s": rng.randf_range(4, 6)})
+	var berry_cols := [Color("d83a4a"), Color("4a5ad8"), Color("e87a2a")]
+	while bushes.size() < 6:
+		var p := Vector2(rng.randf_range(80, 640), rng.randf_range(200, 1060))
+		if _near_trail(p, 70.0) or _in_stream(p, 60.0):
+			continue
+		var blobs := []
+		for k in 5:
+			blobs.append({"off": Vector2(rng.randf_range(-28, 28), rng.randf_range(-18, 8)), "r": rng.randf_range(18, 28)})
+		bushes.append({"pos": p, "blobs": blobs, "berry": berry_cols[rng.randi() % berry_cols.size()], "seed": rng.randf() * 10.0})
 
 	for i in 24:
 		moss.append({"pos": Vector2(rng.randf_range(0, 720), rng.randf_range(120, 1110)),
@@ -138,6 +186,8 @@ func _build_scenery() -> void:
 	while y < 1090.0:
 		trees.append(_tree(Vector2(rng.randf_range(-45, -10), y), rng))
 		trees.append(_tree(Vector2(rng.randf_range(730, 765), y + 60.0), rng))
+		trunks.append({"pos": Vector2(18, y + 58), "side": 1.0})
+		trunks.append({"pos": Vector2(702, y + 118), "side": -1.0})
 		y += rng.randf_range(110, 150)
 
 	for i in 12:
@@ -151,6 +201,72 @@ func _build_scenery() -> void:
 	for i in 3:
 		butterflies.append({"pos": Vector2(rng.randf_range(100, 620), rng.randf_range(200, 1000)),
 			"target": Vector2(rng.randf_range(100, 620), rng.randf_range(200, 1000)), "color": wing_cols[i], "ph": rng.randf() * TAU})
+
+
+func _near_trail(p: Vector2, dist: float) -> bool:
+	return trail.get_closest_point(p).distance_to(p) < dist
+
+
+func _in_stream(p: Vector2, pad: float) -> bool:
+	return stream.get_closest_point(p).distance_to(p) < 34.0 + pad
+
+
+func _near_log(p: Vector2, pad: float) -> bool:
+	for lg in logs:
+		if Geometry2D.get_closest_point_to_segment(p, lg["a"], lg["b"]).distance_to(p) < lg["w"] + pad:
+			return true
+	return false
+
+
+## Rocks and stumps, placed fresh each walk. hidden is what's underneath:
+## a mushroom id or "beetle". peek: a hint of the cap shows at the edge.
+func _place_obstacles() -> void:
+	var count := 3 if Data.day < 4 else 4
+	var tries := 0
+	while obstacles.size() < count and tries < 200:
+		tries += 1
+		var p := Vector2(randf_range(120, 600), randf_range(270, 1010))
+		if _in_stream(p, 50.0) or _near_log(p, 50.0):
+			continue
+		var crowded := false
+		for o in obstacles:
+			if o["pos"].distance_to(p) < 170.0:
+				crowded = true
+		if crowded:
+			continue
+		var kind := "rock" if randf() < 0.5 else "stump"
+		var hp := 3 if kind == "rock" else 4
+		var hidden := _pick_hidden() if randf() < 0.7 else "beetle"
+		obstacles.append({"kind": kind, "pos": p, "hp": hp, "max": hp, "shake": 0.0, "hidden": hidden,
+			"peek": hidden != "beetle" and randf() < 0.5, "seed": randf() * 10.0, "gone": false})
+
+
+## What hides under a rock or stump: rarer unlocked mushrooms are likelier.
+func _pick_hidden() -> String:
+	if Data.is_unlocked("ghost_fungus") and randf() < 0.15:
+		return "ghost_fungus"
+	var ids := Data.unlocked_mushrooms().filter(func(id): return Data.ingredients[id]["weight"] > 0.0)
+	var total := 0.0
+	for id in ids:
+		total += 1.0 / float(Data.ingredients[id]["weight"])
+	var r := randf() * total
+	for id in ids:
+		r -= 1.0 / float(Data.ingredients[id]["weight"])
+		if r <= 0.0:
+			return id
+	return ids[-1]
+
+
+func _make_banner() -> void:
+	var fresh := Data.new_mushrooms(Data.day)
+	if fresh.is_empty():
+		return
+	if Data.day == 1:
+		banner = {"title": "Today's mushrooms", "ids": fresh, "line": "Tap them before they fade. Tap rocks and stumps to look underneath!"}
+	else:
+		var info: Dictionary = Data.ingredients[fresh[0]]
+		banner = {"title": "New mushroom: " + info["name"], "ids": fresh, "latin": info["latin"], "line": info["fact"]}
+	banner["t"] = 0.0
 
 
 func _tree(center: Vector2, rng: RandomNumberGenerator) -> Dictionary:
@@ -179,6 +295,12 @@ func _process(delta: float) -> void:
 	flyers = still_flying
 	for k in bounce.keys():
 		bounce[k] = maxf(0.0, bounce[k] - delta)
+	for o in obstacles:
+		o["shake"] = maxf(0.0, o["shake"] - delta)
+	if not banner.is_empty():
+		banner["t"] += delta
+		if banner["t"] > BANNER_TIME:
+			banner = {}
 
 	var kept := []
 	for it in items:
@@ -212,36 +334,76 @@ func _process(delta: float) -> void:
 
 
 func _pick() -> String:
-	var r := randf() * 12.0
-	if r < 3.0:
-		return "puffcap"
-	if r < 6.0:
-		return "honeyroot"
-	if r < 10.0:
-		return "dewmoss"
-	return "emberleaf"
+	var ids := Data.unlocked_mushrooms().filter(func(id): return Data.ingredients[id]["weight"] > 0.0)
+	var total := 0.0
+	for id in ids:
+		total += float(Data.ingredients[id]["weight"])
+	var r := randf() * total
+	for id in ids:
+		r -= float(Data.ingredients[id]["weight"])
+		if r <= 0.0:
+			return id
+	return ids[-1]
+
+
+func _free_spot(p: Vector2) -> bool:
+	if _in_stream(p, 10.0):
+		return false
+	for o in obstacles:
+		if not o["gone"] and o["pos"].distance_to(p) < 90.0:
+			return false
+	for it in items:
+		if it["pos"].distance_to(p) < 120.0:
+			return false
+	return true
 
 
 func _spawn() -> void:
 	var id := _pick()
 	var life := randf_range(3.0, 5.0)
-	if not moonglow_spawned and (time_left < 6.0 or (time_left < 15.0 and randf() < 0.2)):
-		id = "moonglow"
+	if not rare_spawned and Data.is_unlocked("ghost_fungus") and (time_left < 6.0 or (time_left < 15.0 and randf() < 0.2)):
+		id = "ghost_fungus"
 		life = 3.0
-		moonglow_spawned = true
+		rare_spawned = true
 	var pos := Vector2(randf_range(90, 630), randf_range(210, 1040))
-	for _attempt in 10:
-		var clear := true
-		for it in items:
-			if it["pos"].distance_to(pos) < 120.0:
-				clear = false
-		if clear:
+	for _attempt in 12:
+		if _free_spot(pos):
 			break
 		pos = Vector2(randf_range(90, 630), randf_range(210, 1040))
+	_add_item(id, pos, life)
+
+
+func _add_item(id: String, pos: Vector2, life: float) -> void:
 	items.append({"id": id, "pos": pos, "age": 0.0, "life": life, "ph": randf() * 1.4})
 	for i in 6:
 		_emit(pos + Vector2(randf_range(-12, 12), 4), Vector2(randf_range(-50, 50), randf_range(-80, -30)), 0.45, 3.0,
 			Color("6b5a3e"), "clod")
+
+
+## One tap on a rock or stump: it shakes and cracks, and on the last tap it
+## breaks apart and shows what was underneath.
+func _hit_obstacle(o: Dictionary) -> void:
+	o["hp"] -= 1
+	o["shake"] = 0.25
+	var chip := Color("8a8680") if o["kind"] == "rock" else Color("6a4a30")
+	for i in 6:
+		_emit(o["pos"] + Vector2(randf_range(-20, 20), randf_range(-30, 0)), Vector2(randf_range(-110, 110), randf_range(-170, -60)),
+			0.5, randf_range(2.5, 5.0), chip, "clod")
+	if o["hp"] > 0:
+		return
+	o["gone"] = true
+	for i in 18:
+		_emit(o["pos"] + Vector2(randf_range(-30, 30), randf_range(-30, 10)), Vector2(randf_range(-200, 200), randf_range(-240, -60)),
+			0.7, randf_range(3.0, 7.0), chip, "clod")
+	for i in 6:
+		_emit(o["pos"] + Vector2(randf_range(-20, 20), 0), Vector2(randf_range(-30, 30), randf_range(-40, -10)), 0.8, 14.0,
+			Color(0.55, 0.45, 0.3, 0.45), "dust")
+	if o["hidden"] == "beetle":
+		_emit(o["pos"], Vector2.from_angle(randf_range(-PI, 0)) * 90.0, 2.0, 1.0, Color("2a2440"), "beetle")
+		popups.append({"text": "Just a beetle!", "pos": o["pos"], "t": 0.0, "color": Color.WHITE})
+	else:
+		_add_item(o["hidden"], o["pos"], 5.0)
+		popups.append({"text": "Found one!", "pos": o["pos"], "t": 0.0, "color": Color.WHITE})
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -249,6 +411,10 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
 		var p := get_global_mouse_position()
+		for o in obstacles:
+			if not o["gone"] and o["pos"].distance_to(p + Vector2(0, 10)) < 58.0:
+				_hit_obstacle(o)
+				return
 		for i in range(items.size() - 1, -1, -1):
 			var it: Dictionary = items[i]
 			if it["pos"].distance_to(p) < 60.0:
@@ -314,8 +480,26 @@ func _update_butterflies(delta: float) -> void:
 
 # ---------------------------------------------------------------- drawing ---
 
+## Basket compartments: one per unlocked mushroom, one row of up to 8,
+## a second row once more than 8 are unlocked.
+func _basket_ids() -> Array:
+	return Data.unlocked_mushrooms()
+
+
 func _slot_pos(id: String) -> Vector2:
-	return Vector2(72 + 144 * Data.ingredient_order.find(id), 1188)
+	var ids := _basket_ids()
+	var n := ids.size()
+	var i := maxi(0, ids.find(id))
+	var cell_w := 704.0 / 8.0 if n > 8 else minf(140.0, 704.0 / n)
+	var row := i / 8
+	var in_row := mini(8, n - row * 8)
+	var x0 := 8.0 + (704.0 - in_row * cell_w) / 2.0
+	var y := 1182.0 if n <= 8 else 1158.0 + row * 62.0
+	return Vector2(x0 + (i % 8 + 0.5) * cell_w, y)
+
+
+func _basket_icon() -> float:
+	return 56.0 if _basket_ids().size() <= 8 else 34.0
 
 
 func _flyer_pos(f: Dictionary) -> Vector2:
@@ -332,6 +516,31 @@ func _paint_floor(ci: CanvasItem) -> void:
 	for m in moss:
 		ci.draw_colored_polygon(Art.ellipse(m["pos"], m["rx"], m["ry"], 20),
 			Color(0.62, 0.76, 0.48, 0.45) if m["light"] else Color(0.3, 0.46, 0.28, 0.35))
+	for sp in speckles:
+		ci.draw_circle(sp["pos"], sp["r"], Color(0.2, 0.3, 0.15, 0.18) if sp["dark"] else Color(0.9, 0.95, 0.7, 0.14))
+
+	# Stream: muddy banks, water, and a lighter current down the middle.
+	var water_pts := stream.get_baked_points()
+	for k in range(0, water_pts.size(), 2):
+		ci.draw_circle(water_pts[k], 42, Color("6b5a3e"))
+	for k in range(0, water_pts.size(), 2):
+		ci.draw_circle(water_pts[k], 33, Color("4a7a8a"))
+	for k in range(0, water_pts.size(), 2):
+		ci.draw_circle(water_pts[k], 16, Color("5f93a2"))
+	for k in range(0, water_pts.size(), 6):
+		var q: Vector2 = water_pts[k]
+		ci.draw_colored_polygon(Art.ellipse(q + Vector2(0, -40), 9, 5, 10), Color("7a6a4a"))
+
+	for tr in trunks:
+		var p: Vector2 = tr["pos"]
+		var side: float = tr["side"]
+		ci.draw_rect(Rect2(p.x - 22, p.y - 70, 44, 80), Color("5a4030"))
+		ci.draw_line(p + Vector2(-8, -66), p + Vector2(-6, 6), Color("3e2c20"), 3.0)
+		ci.draw_line(p + Vector2(8, -60), p + Vector2(10, 4), Color("3e2c20"), 3.0)
+		for k in 3:
+			var root := PackedVector2Array([p + Vector2(side * 10, 2 + k * 3), p + Vector2(side * (30 + k * 12), 8 + k * 5),
+				p + Vector2(side * (50 + k * 18), 6 + k * 9)])
+			ci.draw_polyline(root, Color("4e3828"), 7.0 - k * 1.5, true)
 
 	var pts := trail.get_baked_points()
 	for k in range(0, pts.size(), 2):
@@ -348,8 +557,29 @@ func _paint_floor(ci: CanvasItem) -> void:
 		Art.shadow(ci, s["pos"] + Vector2(2, r * 0.5), r * 1.1, r * 0.4)
 		ci.draw_colored_polygon(Art.ellipse(s["pos"], r * 1.1, r * 0.8, 12), Color("9a968c"))
 		ci.draw_colored_polygon(Art.ellipse(s["pos"] + Vector2(-r * 0.3, -r * 0.3), r * 0.5, r * 0.3, 10), Color("bab6aa"))
+	for st in stepping:
+		Art.shadow(ci, st + Vector2(2, 6), 22, 8)
+		ci.draw_colored_polygon(Art.ellipse(st, 22, 14, 16), Color("8a8680"))
+		ci.draw_colored_polygon(Art.ellipse(st + Vector2(-5, -4), 11, 6, 12), Color("aaa69e"))
 	for lg in logs:
 		_paint_log(ci, lg["a"], lg["b"], lg["w"])
+	for b in bushes:
+		var bp: Vector2 = b["pos"]
+		Art.shadow(ci, bp + Vector2(4, 16), 44, 12)
+		for bl in b["blobs"]:
+			ci.draw_circle(bp + bl["off"], bl["r"], Color("3f6a3a"))
+		for bl in b["blobs"]:
+			var r: float = bl["r"]
+			ci.draw_circle(bp + bl["off"] + Vector2(-r * 0.2, -r * 0.25), r * 0.65, Color("5a8a4a"))
+		for k in 7:
+			var bo := Vector2(sin(b["seed"] + k * 2.3) * 30.0, cos(b["seed"] + k * 1.7) * 14.0 - 6.0)
+			ci.draw_circle(bp + bo, 4.5, b["berry"])
+			ci.draw_circle(bp + bo + Vector2(-1.5, -1.5), 1.5, Color(1, 1, 1, 0.7))
+	for cl in clovers:
+		var cp: Vector2 = cl["pos"]
+		var cs: float = cl["s"]
+		for k in 3:
+			ci.draw_circle(cp + Vector2.from_angle(-PI / 2.0 + k * TAU / 3.0) * cs * 0.7, cs * 0.6, Color("4f8a44"))
 	for f in ferns:
 		_paint_fern(ci, f["pos"], f["s"], f["rot"])
 	for g in grass:
@@ -413,6 +643,19 @@ func _paint_light_under(ci: CanvasItem) -> void:
 
 
 func _paint_objects(ci: CanvasItem) -> void:
+	# Moving glints on the stream.
+	var length := stream.get_baked_length()
+	for k in 14:
+		var d := fmod(t * 45.0 + k * length / 14.0, length)
+		var q := stream.sample_baked(d)
+		var dir := (stream.sample_baked(minf(d + 4.0, length)) - q).normalized()
+		var off := dir.orthogonal() * sin(k * 3.7) * 14.0
+		ci.draw_line(q + off - dir * 9.0, q + off + dir * 9.0, Color(1, 1, 1, 0.35), 2.0, true)
+
+	for o in obstacles:
+		if not o["gone"]:
+			_paint_obstacle(ci, o)
+
 	var order := items.duplicate()
 	order.sort_custom(func(a, b): return a["pos"].y < b["pos"].y)
 	for it in order:
@@ -432,10 +675,10 @@ func _paint_objects(ci: CanvasItem) -> void:
 		if tw < 0.35:
 			var ts := sin(tw / 0.35 * PI) * 11.0
 			Art.sparkle(ci, pos + Vector2(24, -38 + bob), ts, Color(1, 1, 0.9, 0.95 * a))
-		if it["id"] == "moonglow":
+		if it["id"] == "ghost_fungus":
 			for k in 3:
 				var ang := t * 2.0 + k * TAU / 3.0
-				Art.sparkle(ci, pos + Vector2(cos(ang) * 46.0, sin(ang) * 20.0 - 20.0 + bob), 6.0, Art.fade(Data.magic.lightened(0.4), a))
+				Art.sparkle(ci, pos + Vector2(cos(ang) * 46.0, sin(ang) * 20.0 - 20.0 + bob), 6.0, Color(0.8, 1.0, 0.85, a))
 
 	for b in butterflies:
 		_paint_butterfly(ci, b)
@@ -449,6 +692,66 @@ func _paint_objects(ci: CanvasItem) -> void:
 				ci.draw_circle(p["pos"], p["size"], Art.fade(p["color"], f))
 			"dust":
 				Art.glow(ci, p["pos"], p["size"] * (2.0 + (1.0 - f) * 2.0), Art.fade(p["color"], f))
+			"beetle":
+				var bp: Vector2 = p["pos"]
+				var legs := sin(t * 40.0) * 3.0
+				for side in [-1.0, 1.0]:
+					ci.draw_line(bp + Vector2(side * 4, -3), bp + Vector2(side * 11, -6 + legs * side), Color("1a1426"), 1.5, true)
+					ci.draw_line(bp + Vector2(side * 4, 3), bp + Vector2(side * 11, 6 - legs * side), Color("1a1426"), 1.5, true)
+				ci.draw_colored_polygon(Art.ellipse(bp, 7, 9, 12), Color("2a2440"))
+				ci.draw_line(bp + Vector2(0, -8), bp + Vector2(0, 8), Color("5a4a86"), 1.0, true)
+
+
+## Rock or stump that hides something. Cracks and splinters show the taps so
+## far; it shakes on each tap. Some let a mushroom cap peek out at the edge.
+func _paint_obstacle(ci: CanvasItem, o: Dictionary) -> void:
+	var pos: Vector2 = o["pos"] + Vector2(sin(t * 70.0) * o["shake"] * 14.0, 0)
+	var damage: int = o["max"] - o["hp"]
+	var sd: float = o["seed"]
+	if o["peek"]:
+		Art.ingredient(ci, o["hidden"], pos + Vector2(40, 20), 30)
+	if o["kind"] == "rock":
+		Art.shadow(ci, pos + Vector2(6, 22), 56, 14)
+		var pts := PackedVector2Array()
+		for k in 12:
+			var ang := TAU * k / 12.0
+			var rr := 1.0 + 0.12 * sin(ang * 3.0 + sd) + 0.06 * sin(ang * 5.0 + sd * 2.0)
+			pts.append(pos + Vector2(cos(ang) * 50.0, sin(ang) * 36.0 - 8.0) * rr)
+		ci.draw_colored_polygon(pts, Color("8a8680"))
+		ci.draw_colored_polygon(Art.ellipse(pos + Vector2(12, 6), 34, 20, 16), Color("76726c"))
+		ci.draw_colored_polygon(Art.ellipse(pos + Vector2(-14, -24), 22, 11, 14), Color("aaa69e"))
+		ci.draw_colored_polygon(Art.ellipse(pos + Vector2(-4, -36), 26, 9, 14), Color("6f9a4a"))
+		Art.outline(ci, pts, Art.fade(Art.INK, 0.55), 2.0)
+		for c in damage:
+			var ang := sd + c * 2.1
+			var crack := PackedVector2Array([pos + Vector2(0, -6)])
+			for j in range(1, 4):
+				crack.append(pos + Vector2(cos(ang + sin(j + c) * 0.5) * 14.0 * j, sin(ang) * 10.0 * j - 6.0))
+			ci.draw_polyline(crack, Color("3a3834"), 2.5, true)
+	else:
+		Art.shadow(ci, pos + Vector2(6, 26), 52, 12)
+		var lean := damage * 0.05 * (1.0 if sd > 5.0 else -1.0)
+		var top := pos + Vector2(lean * 60.0, -34)
+		for k in 3:
+			var side := -1.0 if k == 0 else 1.0
+			ci.draw_polyline(PackedVector2Array([pos + Vector2(side * 20 * (k + 1) * 0.6, 12), pos + Vector2(side * (34 + k * 10), 22),
+				pos + Vector2(side * (48 + k * 12), 20)]), Color("4e3828"), 8.0 - k * 2.0, true)
+		var body := PackedVector2Array([top + Vector2(-38, 0), top + Vector2(38, 0), pos + Vector2(42, 20), pos + Vector2(-42, 20)])
+		ci.draw_colored_polygon(body, Color("5a4030"))
+		for k in 5:
+			var x := -28.0 + k * 14.0
+			ci.draw_line(top + Vector2(x, 4), pos + Vector2(x * 1.1, 18), Color("3e2c20"), 2.0, true)
+		Art.outline(ci, body, Art.fade(Art.INK, 0.7), 2.0)
+		ci.draw_colored_polygon(Art.ellipse(top, 38, 12, 20), Color("c8a070"))
+		Art.outline(ci, Art.ellipse(top, 25, 8, 16), Color("9a7448"), 1.5)
+		Art.outline(ci, Art.ellipse(top, 12, 4, 12), Color("9a7448"), 1.5)
+		Art.outline(ci, Art.ellipse(top, 38, 12, 20), Color("3e2c20"), 2.0)
+		for c in damage:
+			var x := -24.0 + c * 20.0
+			ci.draw_polyline(PackedVector2Array([top + Vector2(x, 2), top + Vector2(x + 6, 18), top + Vector2(x - 2, 34)]),
+				Color("2a1e14"), 2.5, true)
+	if damage == 0 and fmod(t + sd, 3.0) < 0.4:
+		Art.sparkle(ci, pos + Vector2(34, -44), sin(fmod(t + sd, 3.0) / 0.4 * PI) * 10.0, Color(1, 1, 0.9, 0.9))
 
 
 func _paint_butterfly(ci: CanvasItem, b: Dictionary) -> void:
@@ -476,11 +779,12 @@ func _paint_light_over(ci: CanvasItem) -> void:
 			PackedColorArray([beam, beam, clear, clear]))
 	for it in items:
 		var pos: Vector2 = it["pos"]
-		if it["id"] == "moonglow":
+		if it["id"] == "ghost_fungus":
+			var ghost := Color(0.55, 1.0, 0.65)
 			var pulse := 0.7 + 0.3 * sin(t * 5.0)
-			Art.glow(ci, pos + Vector2(0, -15), 100, Art.fade(Data.magic, 0.45 * pulse))
+			Art.glow(ci, pos + Vector2(0, -15), 100, Art.fade(ghost, 0.45 * pulse))
 			var rr := fmod(t * 60.0, 70.0)
-			ci.draw_arc(pos + Vector2(0, -10), 30.0 + rr, 0, TAU, 32, Art.fade(Data.magic, (1.0 - rr / 70.0) * 0.6), 2.0, true)
+			ci.draw_arc(pos + Vector2(0, -10), 30.0 + rr, 0, TAU, 32, Art.fade(ghost, (1.0 - rr / 70.0) * 0.6), 2.0, true)
 		else:
 			Art.glow(ci, pos + Vector2(0, -15), 55, Color(1, 1, 0.8, 0.12))
 	for p in particles:
@@ -540,17 +844,19 @@ func _paint_ui(ci: CanvasItem) -> void:
 			x += 32.0
 	ci.draw_rect(Rect2(4, BASKET_Y + 4, 712, 22), Color("6a4a2a"))
 	ci.draw_rect(Rect2(4, BASKET_Y + 4, 712, 6), Color("8a6a42"))
-	for i in range(1, 5):
-		ci.draw_line(Vector2(144 * i, BASKET_Y + 30), Vector2(144 * i, BASKET_Y + 160), Color(0.3, 0.2, 0.1, 0.5), 3.0)
-	for i in 5:
-		var id: String = Data.ingredient_order[i]
+	var ids := _basket_ids()
+	var icon := _basket_icon()
+	for id in ids:
 		var b: float = bounce.get(id, 0.0)
-		var pos := _slot_pos(id) + Vector2(0, -sin(b / 0.35 * PI) * 12.0)
-		Art.glow(ci, pos + Vector2(0, -10), 46, Color(0.2, 0.12, 0.05, 0.35))
-		Art.ingredient(ci, id, pos, 60.0 * (1.0 + b * 0.6))
+		var slot := _slot_pos(id)
+		var pos := slot + Vector2(0, -sin(b / 0.35 * PI) * 12.0)
+		Art.glow(ci, pos + Vector2(0, -10), icon * 0.8, Color(0.2, 0.12, 0.05, 0.35))
+		Art.ingredient(ci, id, pos, icon * (1.0 + b * 0.6))
 		var label := "x%d" % Data.inventory[id]
-		ci.draw_string_outline(font, Vector2(144 * i, 1262), label, HORIZONTAL_ALIGNMENT_CENTER, 144, 24, 6, Color(0.2, 0.12, 0.05, 0.8))
-		ci.draw_string(font, Vector2(144 * i, 1262), label, HORIZONTAL_ALIGNMENT_CENTER, 144, 24, Data.parchment)
+		var ly := slot.y + icon * 0.62 + 12.0
+		var fs := 22 if icon > 40.0 else 15
+		ci.draw_string_outline(font, Vector2(slot.x - 40, ly), label, HORIZONTAL_ALIGNMENT_CENTER, 80, fs, 5, Color(0.2, 0.12, 0.05, 0.85))
+		ci.draw_string(font, Vector2(slot.x - 40, ly), label, HORIZONTAL_ALIGNMENT_CENTER, 80, fs, Data.parchment)
 
 	for f in flyers:
 		var k: float = f["t"] / FLY_TIME
@@ -561,3 +867,31 @@ func _paint_ui(ci: CanvasItem) -> void:
 		var at: Vector2 = p["pos"] + Vector2(-110, -60 - pt * 50)
 		ci.draw_string_outline(font, at, p["text"], HORIZONTAL_ALIGNMENT_CENTER, 220, 26, 6, Color(0, 0, 0, 0.55 * (1.0 - pt)))
 		ci.draw_string(font, at, p["text"], HORIZONTAL_ALIGNMENT_CENTER, 220, 26, Art.fade(Data.parchment, 1.0 - pt))
+
+	if not banner.is_empty():
+		_paint_banner(ci, rid, font)
+
+
+## Introduces the day's new mushroom (or the first three) with a real fact and
+## a reminder never to eat wild mushrooms.
+func _paint_banner(ci: CanvasItem, rid: RID, font: Font) -> void:
+	var bt: float = banner["t"]
+	var a := clampf(minf(bt * 4.0, (BANNER_TIME - bt) * 2.0), 0.0, 1.0)
+	var box := Rect2(24, 158 - (1.0 - a) * 20.0, 672, 176)
+	var style := basket_box.duplicate() as StyleBoxFlat
+	style.bg_color = Color(0.12, 0.1, 0.06, 0.86 * a)
+	style.border_color = Color(0.95, 0.85, 0.55, 0.7 * a)
+	style.draw(rid, box)
+	var ids: Array = banner["ids"]
+	for i in ids.size():
+		Art.ingredient(ci, ids[i], box.position + Vector2(62 + i * 58 - (ids.size() - 1) * 18, 96), 72.0 if ids.size() == 1 else 48.0, a)
+	var tx := box.position.x + (140.0 if ids.size() == 1 else 190.0)
+	var w := box.end.x - tx - 16.0
+	ci.draw_string(font, Vector2(tx, box.position.y + 40), banner["title"], HORIZONTAL_ALIGNMENT_LEFT, w, 24, Color(1, 0.9, 0.6, a))
+	var y := box.position.y + 64.0
+	if banner.has("latin"):
+		ci.draw_string(font, Vector2(tx, y), banner["latin"], HORIZONTAL_ALIGNMENT_LEFT, w, 15, Color(1, 1, 1, 0.6 * a))
+		y += 24.0
+	ci.draw_multiline_string(font, Vector2(tx, y), banner["line"], HORIZONTAL_ALIGNMENT_LEFT, w, 17, 3, Color(1, 1, 1, 0.92 * a))
+	ci.draw_string(font, Vector2(box.position.x + 16, box.end.y - 14), SAFETY, HORIZONTAL_ALIGNMENT_LEFT, box.size.x - 32, 14,
+		Color(1.0, 0.65, 0.55, a))

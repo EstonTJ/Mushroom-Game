@@ -1,6 +1,8 @@
 extends Node
-## Saves a PNG of each phase. Needs a real window (not --headless):
-##   Godot --path . res://tests/screenshots.tscn -- <output folder>
+## Saves a PNG of each screen. Needs a real window (not --headless):
+##   Godot --path . --resolution 720x1280 res://tests/screenshots.tscn -- <output folder>
+
+const Forage = preload("res://scripts/forage.gd")
 
 var out_dir := "user://screenshots"
 
@@ -21,98 +23,91 @@ func _ready() -> void:
 		out_dir = args[0]
 	DirAccess.make_dir_recursive_absolute(out_dir)
 
+	# Day 1 forest: the first three mushrooms, rocks and stumps, the intro banner.
 	var main = load("res://main.tscn").instantiate()
 	add_child(main)
 	await frames(40)
-	# Make sure a Moonglow is showing, and catch one pickup mid-flight to the basket.
 	var fg = main.phase_node
-	fg.items.append({"id": "moonglow", "pos": Vector2(470, 640), "age": 0.5, "life": 3.0, "ph": 0.0})
 	var picked: Dictionary = fg.items[0]
 	Data.inventory[picked["id"]] += 1
 	fg.flyers.append({"id": picked["id"], "from": picked["pos"], "t": 0.0})
-	fg.popups.append({"text": "+1 " + Data.ingredients[picked["id"]]["name"], "pos": picked["pos"], "t": 0.0, "color": Color.WHITE})
 	fg.items.remove_at(0)
-	await frames(12)
+	fg._hit_obstacle(fg.obstacles[0])
+	await frames(10)
 	await shot("1_forage")
 
-	main.phase_node.time_left = 0.0
+	# Mid-game cauldron (night 25): most jars unlocked, a paged recipe book.
+	fg.time_left = 0.0
 	await frames(3)
+	Data.day = 25
 	for id in Data.ingredient_order:
 		Data.inventory[id] = 3
+	for id in ["spore", "syrup", "ember", "ward", "ink_pool", "frost", "great_ward", "befuddle"]:
+		Data.discovered[id] = true
+		Data.bottles[id] = 1
 	var brew = main.phase_node
-	for pair in [["puffcap", "dewmoss"], ["honeyroot", "dewmoss"], ["emberleaf", "puffcap"]]:
-		for id in pair:
-			brew._on_press(Vector2(brew.SLOT_W * Data.ingredient_order.find(id) + 72, 220))
-			brew._on_release(brew.POT)
-		brew._on_press(brew.POT + Vector2(120, 0))
-		for k in 70:
-			brew._on_stir(brew.POT + Vector2(120, 0).rotated(k * 0.3))
-		brew._on_release(brew.POT)
-	for id in ["moonglow", "honeyroot"]:
-		brew._on_press(Vector2(brew.SLOT_W * Data.ingredient_order.find(id) + 72, 220))
+	for id in ["scarlet_elf_cup", "puffball"]:
+		brew._on_press(brew.slot_center(Data.ingredient_order.find(id)))
 		brew._on_release(brew.POT)
 	brew._on_press(brew.POT + Vector2(120, 0))
 	for k in 30:
 		brew._on_stir(brew.POT + Vector2(120, 0).rotated(k * 0.3))
+	brew.book_page = 1
 	await frames(5)
 	await shot("2_brew")
-	# Finish the stir and catch the new bottle mid-flight to the recipe book.
-	for k in 40:
-		brew._on_stir(brew.POT + Vector2(120, 0).rotated(9.0 + k * 0.3))
-	await frames(22)
-	await shot("2b_brew_result")
 
+	# Night 25 fortify: the roster and a bar with more kinds than fit.
 	main._on_action()
 	await frames(3)
 	var def = main.phase_node
-	def.selected = "spore"
+	def.selected = "frost"
 	def._fortify_tap(def.slots[1]["pos"])
-	def.selected = "syrup"
+	def.selected = "ink_pool"
 	def._fortify_tap(def.slots[4]["pos"])
-	def.selected = "ember"
-	# Show the night-3 roster (all four creature types) on the fortify bar.
-	def.cfg["waves"] = Data.nights[2]["waves"]
 	await frames(5)
 	await shot("3_fortify")
 
+	# Full night with the new potions going off among all four creature types.
 	main._on_action()
-	# Skip the dusk-to-night fade so the shot shows full night.
 	def.night_amt = 1.0
 	def.ground_layer.queue_redraw()
 	def.canopy_layer.queue_redraw()
 	def.ward = 4
-	for i in 160:
-		def._night_step(0.05)
-	await frames(3)
-	await shot("4_night")
-
-	# Potions going off: a spore cloud, a syrup puddle and an ember burst.
-	if def.enemies.size() > 0:
-		def._spawn_area("spore", def.enemies[0]["pos"])
-	def._spawn_area("syrup", def.curves[1].sample_baked(300.0))
-	def._spawn_area("ember", def.curves[0].sample_baked(250.0))
-	await frames(12)
-	await shot("5_night_effects")
-
-	# All four creature types: one drowsy in spores, one stuck in syrup, plus the intro banner.
 	def.enemies = []
-	def.areas = []
-	var c0: Curve2D = def.curves[0]
-	var c1: Curve2D = def.curves[1]
 	var lineup := [["mischief", 0, 330.0], ["scuttler", 0, 520.0], ["stumpling", 1, 300.0], ["moth", 1, 560.0],
-		["mischief", 1, 760.0], ["scuttler", 0, 740.0]]
+		["mischief", 1, 760.0], ["scuttler", 0, 740.0], ["mischief", 0, 150.0]]
 	for row in lineup:
 		var e: Dictionary = def._make_enemy(row[0], row[1])
 		e["offset"] = row[2]
 		e["pos"] = def.curves[row[1]].sample_baked(row[2])
+		e["courage"] = 99.0
 		def.enemies.append(e)
-	def._spawn_area("spore", c0.sample_baked(330.0))
-	def._spawn_area("syrup", c1.sample_baked(300.0))
-	def.intro = {"kind": "moth", "t": 1.0}
+	def._spawn_area("frost", def.curves[1].sample_baked(560.0))
+	def._spawn_area("befuddle", def.curves[0].sample_baked(330.0))
+	def._spawn_area("ink_pool", def.curves[1].sample_baked(300.0))
+	def._spawn_area("sulphur", def.curves[0].sample_baked(740.0))
 	for i in 2:
-		for e in def.enemies:
-			e["hurt"] = 0.0
 		def._night_step(0.01)
 	await frames(10)
-	await shot("6_creatures")
+	await shot("4_night")
+
+	# The hut breaking down: whole, then 1 to 4 hits.
+	for b in 5:
+		def.hut_hp = Data.HUT_HP - b
+		await frames(3)
+		await shot("6_hut_%d" % b)
+
+	# Late game forest (night 37): all 15 mushrooms in the basket, a new-mushroom banner.
+	main.queue_free()
+	await frames(2)
+	Data.day = 37
+	var late = Forage.new()
+	add_child(late)
+	late.items.append({"id": "ghost_fungus", "pos": Vector2(470, 640), "age": 0.5, "life": 3.0, "ph": 0.0})
+	late.items.append({"id": "parasol", "pos": Vector2(200, 880), "age": 0.8, "life": 4.0, "ph": 0.3})
+	late.items.append({"id": "chicken_of_the_woods", "pos": Vector2(560, 950), "age": 0.8, "life": 4.0, "ph": 0.6})
+	late._hit_obstacle(late.obstacles[1])
+	late._hit_obstacle(late.obstacles[1])
+	await frames(40)
+	await shot("5_forage_late")
 	get_tree().quit()

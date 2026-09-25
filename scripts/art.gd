@@ -51,36 +51,301 @@ static func shadow(ci: CanvasItem, pos: Vector2, rx: float, ry: float, a: float 
 	ci.draw_colored_polygon(ellipse(pos, rx, ry, 20), Color(0, 0, 0, 0.28 * a))
 
 
+## Draws a mushroom ingredient by id (a key of Data.ingredients). pos is the
+## ground point (stem base sits just below it); s is the overall size.
 static func ingredient(ci: CanvasItem, id: String, pos: Vector2, s: float, a: float = 1.0) -> void:
 	match id:
-		"puffcap":
-			mushroom(ci, pos, s, Color("b58fd6"), a, false)
-		"moonglow":
-			mushroom(ci, pos, s, Color("9ff0f0"), a, true)
-		"honeyroot":
-			var c := fade(Color("e0a441"), a)
-			ci.draw_line(pos + Vector2(0, s * 0.3), pos + Vector2(s * 0.12, s * 0.45), fade(Color("8a6242"), a), s * 0.06)
-			ci.draw_circle(pos + Vector2(0, s * 0.1), s * 0.28, c)
-			ci.draw_colored_polygon(PackedVector2Array([
-				pos + Vector2(-s * 0.25, 0), pos + Vector2(0, -s * 0.45), pos + Vector2(s * 0.25, 0)]), c)
-			ci.draw_circle(pos + Vector2(-s * 0.08, 0), s * 0.07, fade(Color(1, 1, 1, 0.6), a))
-		"emberleaf":
-			var c := fade(Color("d9623b"), a)
-			ci.draw_colored_polygon(PackedVector2Array([
-				pos + Vector2(0, -s * 0.5), pos + Vector2(s * 0.3, -s * 0.1), pos + Vector2(s * 0.18, s * 0.3),
-				pos + Vector2(0, s * 0.42), pos + Vector2(-s * 0.18, s * 0.3), pos + Vector2(-s * 0.3, -s * 0.1)]), c)
-			ci.draw_line(pos + Vector2(0, -s * 0.4), pos + Vector2(0, s * 0.5), fade(Color("ffd08a"), a), s * 0.04)
-		"dewmoss":
-			var c := fade(Color("6fae8a"), a)
-			ci.draw_circle(pos + Vector2(-s * 0.2, s * 0.1), s * 0.22, c)
-			ci.draw_circle(pos + Vector2(s * 0.18, s * 0.12), s * 0.2, c)
-			ci.draw_circle(pos + Vector2(0, -s * 0.12), s * 0.24, c)
-			ci.draw_circle(pos + Vector2(s * 0.08, -s * 0.2), s * 0.08, fade(Color("d8f3ff"), a))
+		"puffball":
+			_puffball(ci, pos, s, a)
+		"fly_agaric":
+			_fly_agaric(ci, pos, s, a)
+		"chanterelle":
+			_chanterelle(ci, pos, s, a)
+		"ghost_fungus":
+			_ghost_fungus(ci, pos, s, a)
+		"shaggy_ink_cap":
+			_ink_cap(ci, pos, s, a)
+		"scarlet_elf_cup":
+			_elf_cup(ci, pos, s, a)
+		"turkey_tail":
+			_turkey_tail(ci, pos, s, a)
+		"amethyst_deceiver":
+			mushroom(ci, pos, s * 0.92, Color("8a4fc8"), a, false, false, Color("a878d8"))
+			ci.draw_line(pos + Vector2(-s * 0.04, s * 0.2), pos + Vector2(-s * 0.03, -s * 0.2), fade(Color("7a48b0"), a), 1.2, true)
+			ci.draw_line(pos + Vector2(s * 0.05, s * 0.2), pos + Vector2(s * 0.04, -s * 0.2), fade(Color("7a48b0"), a), 1.2, true)
+		"morel":
+			_morel(ci, pos, s, a)
+		"chicken_of_the_woods":
+			_chicken(ci, pos, s, a)
+		"indigo_milk_cap":
+			_milk_cap(ci, pos, s, a)
+		"porcini":
+			_porcini(ci, pos, s, a)
+		"parasol":
+			_parasol(ci, pos, s, a)
+		"lions_mane":
+			_lions_mane(ci, pos, s, a)
+		"bleeding_tooth":
+			_bleeding_tooth(ci, pos, s, a)
+		_:
+			mushroom(ci, pos, s, Color("b58fd6"), a)
+
+
+static func _stem(ci: CanvasItem, pos: Vector2, s: float, a: float, top_y: float, w_top: float, w_bot: float, color: Color) -> void:
+	var pts := PackedVector2Array([pos + Vector2(-w_bot, s * 0.25), pos + Vector2(-w_top, top_y), pos + Vector2(w_top, top_y),
+		pos + Vector2(w_bot, s * 0.25)])
+	ci.draw_colored_polygon(pts, fade(color, a))
+	ci.draw_colored_polygon(PackedVector2Array([pos + Vector2(w_bot * 0.25, s * 0.25), pos + Vector2(w_top * 0.25, top_y),
+		pos + Vector2(w_top, top_y), pos + Vector2(w_bot, s * 0.25)]), fade(color.darkened(0.15), a))
+	outline(ci, pts, fade(INK, 0.55 * a), maxf(1.2, s * 0.03))
+
+
+static func _puffball(ci: CanvasItem, pos: Vector2, s: float, a: float) -> void:
+	var cream := Color("efe6cf")
+	shadow(ci, pos + Vector2(0, s * 0.24), s * 0.36, s * 0.08, a)
+	_stem(ci, pos, s, a, s * 0.02, s * 0.12, s * 0.18, Color("e0d4b4"))
+	var c := pos + Vector2(0, -s * 0.22)
+	var ball := ellipse(c, s * 0.4, s * 0.36, 28)
+	ci.draw_colored_polygon(ball, fade(cream, a))
+	ci.draw_colored_polygon(ellipse(c + Vector2(s * 0.08, s * 0.08), s * 0.28, s * 0.24, 20), fade(Color("ddd0ae"), 0.7 * a))
+	ci.draw_colored_polygon(ellipse(c + Vector2(-s * 0.13, -s * 0.13), s * 0.14, s * 0.09, 14), fade(Color.WHITE, 0.7 * a))
+	for k in 16:
+		var p := Vector2(sin(k * 12.9898) * 0.3, sin(k * 78.233) * 0.27)
+		ci.draw_circle(c + p * s, s * 0.022, fade(Color("c8b890"), a))
+	ci.draw_colored_polygon(ellipse(c + Vector2(0, -s * 0.3), s * 0.06, s * 0.025, 10), fade(Color("7a6a4a"), a))
+	ci.draw_circle(c + Vector2(-s * 0.02, -s * 0.42), s * 0.035, fade(Color("a89878"), 0.5 * a))
+	ci.draw_circle(c + Vector2(s * 0.05, -s * 0.5), s * 0.025, fade(Color("a89878"), 0.35 * a))
+	outline(ci, ball, fade(INK, 0.55 * a), maxf(1.2, s * 0.03))
+
+
+static func _fly_agaric(ci: CanvasItem, pos: Vector2, s: float, a: float) -> void:
+	ci.draw_colored_polygon(ellipse(pos + Vector2(0, s * 0.2), s * 0.19, s * 0.09, 14), fade(Color("f5efe0"), a))
+	mushroom(ci, pos, s, Color("d8322a"), a)
+	var dot := fade(Color(1, 0.98, 0.92), a)
+	for p in [Vector2(-0.14, -0.6), Vector2(0.2, -0.58), Vector2(-0.4, -0.3), Vector2(0.42, -0.3), Vector2(0.12, -0.36)]:
+		ci.draw_circle(pos + p * s, s * 0.045, dot)
+	ci.draw_colored_polygon(ellipse(pos + Vector2(0, -s * 0.12), s * 0.17, s * 0.045, 14), fade(Color("f5efe0"), a))
+	outline(ci, ellipse(pos + Vector2(0, -s * 0.12), s * 0.17, s * 0.045, 14), fade(INK, 0.4 * a), 1.0)
+
+
+static func _chanterelle(ci: CanvasItem, pos: Vector2, s: float, a: float) -> void:
+	var gold := Color("f0b23a")
+	shadow(ci, pos + Vector2(0, s * 0.24), s * 0.3, s * 0.07, a)
+	var body := PackedVector2Array([pos + Vector2(-s * 0.1, s * 0.25), pos + Vector2(-s * 0.13, s * 0.02), pos + Vector2(-s * 0.28, -s * 0.24),
+		pos + Vector2(-s * 0.5, -s * 0.42), pos + Vector2(s * 0.5, -s * 0.42), pos + Vector2(s * 0.28, -s * 0.24),
+		pos + Vector2(s * 0.13, s * 0.02), pos + Vector2(s * 0.1, s * 0.25)])
+	ci.draw_colored_polygon(body, fade(gold, a))
+	for k in 7:
+		var x := -0.4 + k * 0.133
+		ci.draw_line(pos + Vector2(x * 0.25 * s, s * 0.05), pos + Vector2(x * s, -s * 0.4), fade(Color("d8902a"), a), maxf(1.0, s * 0.025), true)
+	outline(ci, body, fade(INK, 0.55 * a), maxf(1.2, s * 0.03))
+	var lip := PackedVector2Array()
+	for i in 28:
+		var ang := TAU * i / 28.0
+		var w := 1.0 + 0.07 * sin(ang * 6.0)
+		lip.append(pos + Vector2(0, -s * 0.44) + Vector2(cos(ang) * s * 0.52 * w, sin(ang) * s * 0.13 * w))
+	ci.draw_colored_polygon(lip, fade(gold.lightened(0.1), a))
+	ci.draw_colored_polygon(ellipse(pos + Vector2(0, -s * 0.45), s * 0.3, s * 0.07, 18), fade(Color("c8861a"), a))
+	outline(ci, lip, fade(INK, 0.55 * a), maxf(1.2, s * 0.03))
+
+
+static func _fan(ci: CanvasItem, base: Vector2, r: float, a0: float, a1: float, color: Color, a: float) -> PackedVector2Array:
+	var pts := PackedVector2Array([base])
+	for i in 13:
+		var ang := lerpf(a0, a1, i / 12.0)
+		pts.append(base + Vector2.from_angle(ang) * r * (1.0 + 0.05 * sin(ang * 9.0)))
+	ci.draw_colored_polygon(pts, fade(color, a))
+	return pts
+
+
+static func _ghost_fungus(ci: CanvasItem, pos: Vector2, s: float, a: float) -> void:
+	glow(ci, pos + Vector2(0, -s * 0.3), s * 1.1, Color(0.55, 1.0, 0.65, 0.45 * a))
+	shadow(ci, pos + Vector2(0, s * 0.24), s * 0.34, s * 0.07, a)
+	for f in [[Vector2(-0.16, 0.2), 0.42, PI * 1.05, PI * 1.6], [Vector2(0.14, 0.22), 0.46, PI * 1.4, PI * 1.95], [Vector2(0.0, 0.25), 0.5, PI * 1.2, PI * 1.8]]:
+		var base: Vector2 = pos + f[0] * s
+		var pts := _fan(ci, base, s * f[1], f[2], f[3], Color("c8f5d8"), a)
+		for k in range(2, 12, 2):
+			ci.draw_line(base, pts[k], fade(Color("9ad8b0"), a), 1.0, true)
+		outline(ci, pts, fade(Color("2a4a38"), 0.6 * a), maxf(1.2, s * 0.03))
+
+
+static func _ink_cap(ci: CanvasItem, pos: Vector2, s: float, a: float) -> void:
+	shadow(ci, pos + Vector2(0, s * 0.24), s * 0.24, s * 0.06, a)
+	_stem(ci, pos, s, a, s * 0.0, s * 0.06, s * 0.08, Color("f5f2ea"))
+	var cap := PackedVector2Array([pos + Vector2(-s * 0.22, s * 0.04)])
+	for i in 15:
+		var ang := PI + PI * i / 14.0
+		cap.append(pos + Vector2(cos(ang) * s * 0.22, -s * 0.55 + sin(ang) * s * 0.28))
+	cap.append(pos + Vector2(s * 0.22, s * 0.04))
+	ci.draw_colored_polygon(cap, fade(Color("f2efe8"), a))
+	ci.draw_colored_polygon(ellipse(pos + Vector2(0, -s * 0.78), s * 0.12, s * 0.06, 12), fade(Color("d8c8a8"), a))
+	for row in 5:
+		for col in 3:
+			var p := pos + Vector2((-0.12 + col * 0.12 + (row % 2) * 0.06) * s, (-0.6 + row * 0.13) * s)
+			ci.draw_polyline(PackedVector2Array([p + Vector2(-s * 0.035, -s * 0.03), p, p + Vector2(s * 0.035, -s * 0.03)]),
+				fade(Color("b8a888"), a), maxf(1.0, s * 0.02), true)
+	ci.draw_rect(Rect2(pos.x - s * 0.22, pos.y - s * 0.02, s * 0.44, s * 0.06), fade(Color("2a2a30"), a))
+	for x in [-0.15, 0.02, 0.14]:
+		ci.draw_colored_polygon(ellipse(pos + Vector2(x * s, s * 0.08), s * 0.025, s * 0.045, 8), fade(Color("2a2a30"), a))
+	outline(ci, cap, fade(INK, 0.55 * a), maxf(1.2, s * 0.03))
+
+
+static func _elf_cup(ci: CanvasItem, pos: Vector2, s: float, a: float) -> void:
+	shadow(ci, pos + Vector2(0, s * 0.24), s * 0.46, s * 0.07, a)
+	ci.draw_line(pos + Vector2(-s * 0.48, s * 0.2), pos + Vector2(s * 0.48, s * 0.1), fade(Color("6a4a30"), a), s * 0.08, true)
+	for m in [Vector2(-0.3, 0.14), Vector2(0.05, 0.14), Vector2(0.36, 0.09)]:
+		ci.draw_circle(pos + m * s, s * 0.06, fade(Color("6f9a4a"), a))
+	for cup in [[Vector2(-0.24, 0.04), 0.26], [Vector2(0.34, 0.06), 0.2], [Vector2(0.08, -0.04), 0.34]]:
+		var c: Vector2 = pos + cup[0] * s
+		var r: float = cup[1] * s
+		var bowl := PackedVector2Array()
+		for i in 13:
+			var ang := PI * i / 12.0
+			bowl.append(c + Vector2(cos(ang) * r, sin(ang) * r * 0.8 - r * 0.3))
+		ci.draw_colored_polygon(bowl, fade(Color("e86a78"), a))
+		ci.draw_colored_polygon(ellipse(c + Vector2(0, -r * 0.3), r, r * 0.36, 18), fade(Color("e0283a"), a))
+		ci.draw_colored_polygon(ellipse(c + Vector2(0, -r * 0.26), r * 0.6, r * 0.2, 14), fade(Color("a8182a"), a))
+		outline(ci, ellipse(c + Vector2(0, -r * 0.3), r, r * 0.36, 18), fade(INK, 0.55 * a), maxf(1.0, s * 0.025))
+
+
+static func _turkey_tail(ci: CanvasItem, pos: Vector2, s: float, a: float) -> void:
+	shadow(ci, pos + Vector2(0, s * 0.24), s * 0.44, s * 0.07, a)
+	ci.draw_rect(Rect2(pos.x - s * 0.12, pos.y + s * 0.02, s * 0.24, s * 0.22), fade(Color("5a4030"), a))
+	var bands := [Color("e8dcc0"), Color("8a6a4a"), Color("5a6a80"), Color("c8a878"), Color("6a4a32"), Color("a8845c")]
+	for fan in [[Vector2(0.18, 0.1), 0.34], [Vector2(-0.06, 0.06), 0.5]]:
+		var base: Vector2 = pos + fan[0] * s
+		var r: float = fan[1] * s
+		var outer := PackedVector2Array()
+		for k in bands.size():
+			var pts := _fan(ci, base, r * (1.0 - k * 0.15), PI * 1.08, PI * 1.92, bands[k], a)
+			if k == 0:
+				outer = pts
+		outline(ci, outer, fade(INK, 0.55 * a), maxf(1.2, s * 0.03))
+
+
+static func _morel(ci: CanvasItem, pos: Vector2, s: float, a: float) -> void:
+	shadow(ci, pos + Vector2(0, s * 0.24), s * 0.26, s * 0.06, a)
+	_stem(ci, pos, s, a, -s * 0.18, s * 0.13, s * 0.16, Color("efe3c8"))
+	var c := pos + Vector2(0, -s * 0.46)
+	var cap := ellipse(c, s * 0.26, s * 0.36, 24)
+	ci.draw_colored_polygon(cap, fade(Color("c8a068"), a))
+	for row in 6:
+		for col in 4:
+			var p := Vector2((-0.15 + col * 0.1 + (row % 2) * 0.05), (-0.27 + row * 0.1))
+			if (p / Vector2(0.24, 0.33)).length() < 0.9:
+				ci.draw_colored_polygon(ellipse(c + p * s, s * 0.035, s * 0.03, 8), fade(Color("6a4a2a"), a))
+	outline(ci, cap, fade(INK, 0.55 * a), maxf(1.2, s * 0.03))
+
+
+static func _chicken(ci: CanvasItem, pos: Vector2, s: float, a: float) -> void:
+	shadow(ci, pos + Vector2(0, s * 0.24), s * 0.44, s * 0.07, a)
+	var bark := Rect2(pos.x - s * 0.44, pos.y - s * 0.78, s * 0.2, s * 1.03)
+	ci.draw_rect(bark, fade(Color("5a4030"), a))
+	ci.draw_line(Vector2(bark.position.x + s * 0.07, bark.position.y), Vector2(bark.position.x + s * 0.08, bark.end.y), fade(Color("3e2c20"), a), 2.0)
+	ci.draw_line(Vector2(bark.position.x + s * 0.14, bark.position.y), Vector2(bark.position.x + s * 0.13, bark.end.y), fade(Color("3e2c20"), a), 2.0)
+	for shelf in [[-0.56, 0.5], [-0.28, 0.62], [0.02, 0.46]]:
+		var base := Vector2(bark.end.x - s * 0.02, pos.y + float(shelf[0]) * s)
+		var r: float = float(shelf[1]) * s
+		var pts := _fan(ci, base, r, -0.85, 0.75, Color("f5902a"), a)
+		var rim := PackedVector2Array()
+		for i in range(1, pts.size()):
+			rim.append(base + (pts[i] - base) * 0.88)
+		ci.draw_polyline(rim, fade(Color("f5d23a"), a), maxf(2.0, s * 0.06), true)
+		ci.draw_colored_polygon(ellipse(base + Vector2(r * 0.35, -r * 0.2), r * 0.18, r * 0.07, 10), fade(Color("ffb860"), 0.8 * a))
+		outline(ci, pts, fade(INK, 0.55 * a), maxf(1.2, s * 0.03))
+
+
+static func _milk_cap(ci: CanvasItem, pos: Vector2, s: float, a: float) -> void:
+	shadow(ci, pos + Vector2(0, s * 0.24), s * 0.34, s * 0.07, a)
+	_stem(ci, pos, s, a, -s * 0.28, s * 0.1, s * 0.13, Color("8aa0d8"))
+	var cap := PackedVector2Array()
+	for i in 17:
+		var ang := PI + PI * i / 16.0
+		cap.append(pos + Vector2(cos(ang) * s * 0.55, -s * 0.28 + sin(ang) * s * 0.3))
+	ci.draw_colored_polygon(cap, fade(Color("4a6ad0"), a))
+	for k in 3:
+		var r := 0.45 - k * 0.13
+		ci.draw_arc(pos + Vector2(0, -s * 0.28), s * r, PI * 1.1, PI * 1.9, 12, fade(Color("2e48a8"), a), maxf(1.0, s * 0.025), true)
+	ci.draw_colored_polygon(ellipse(pos + Vector2(0, -s * 0.52), s * 0.16, s * 0.04, 12), fade(Color("2e48a8"), a))
+	outline(ci, cap, fade(INK, 0.55 * a), maxf(1.2, s * 0.03))
+	var drop := pos + Vector2(s * 0.46, -s * 0.18)
+	ci.draw_circle(drop, s * 0.05, fade(Color("6a8ae0"), a))
+	ci.draw_colored_polygon(PackedVector2Array([drop + Vector2(-s * 0.045, -s * 0.01), drop + Vector2(0, -s * 0.09),
+		drop + Vector2(s * 0.045, -s * 0.01)]), fade(Color("6a8ae0"), a))
+
+
+static func _porcini(ci: CanvasItem, pos: Vector2, s: float, a: float) -> void:
+	shadow(ci, pos + Vector2(0, s * 0.24), s * 0.4, s * 0.08, a)
+	var stem := PackedVector2Array([pos + Vector2(-s * 0.18, s * 0.25), pos + Vector2(-s * 0.26, s * 0.02), pos + Vector2(-s * 0.16, -s * 0.24),
+		pos + Vector2(s * 0.16, -s * 0.24), pos + Vector2(s * 0.26, s * 0.02), pos + Vector2(s * 0.18, s * 0.25)])
+	ci.draw_colored_polygon(stem, fade(Color("efe3c8"), a))
+	for k in 4:
+		ci.draw_line(pos + Vector2(-s * 0.18, -s * 0.12 + k * s * 0.08), pos + Vector2(s * 0.18, -s * 0.16 + k * s * 0.08),
+			fade(Color("d8c8a0"), a), 1.0, true)
+	outline(ci, stem, fade(INK, 0.55 * a), maxf(1.2, s * 0.03))
+	ci.draw_colored_polygon(ellipse(pos + Vector2(0, -s * 0.24), s * 0.48, s * 0.08, 20), fade(Color("e8d8a0"), a))
+	var cap := PackedVector2Array()
+	for i in 17:
+		var ang := PI + PI * i / 16.0
+		cap.append(pos + Vector2(cos(ang) * s * 0.52, -s * 0.26 + sin(ang) * s * 0.46))
+	ci.draw_colored_polygon(cap, fade(Color("8a5a32"), a))
+	ci.draw_colored_polygon(ellipse(pos + Vector2(-s * 0.16, -s * 0.56), s * 0.16, s * 0.07, 12), fade(Color("b88a5a"), 0.8 * a))
+	outline(ci, cap, fade(INK, 0.6 * a), maxf(1.2, s * 0.035))
+
+
+static func _parasol(ci: CanvasItem, pos: Vector2, s: float, a: float) -> void:
+	shadow(ci, pos + Vector2(0, s * 0.24), s * 0.24, s * 0.06, a)
+	_stem(ci, pos, s, a, -s * 0.55, s * 0.05, s * 0.08, Color("e8dcc0"))
+	for k in 5:
+		var y := s * (0.12 - k * 0.12)
+		ci.draw_polyline(PackedVector2Array([pos + Vector2(-s * 0.05, y), pos + Vector2(0, y + s * 0.03), pos + Vector2(s * 0.05, y)]),
+			fade(Color("8a6a48"), a), maxf(1.0, s * 0.02), true)
+	ci.draw_colored_polygon(ellipse(pos + Vector2(0, -s * 0.3), s * 0.11, s * 0.035, 12), fade(Color("f5efe0"), a))
+	var cap := PackedVector2Array([pos + Vector2(-s * 0.58, -s * 0.5), pos + Vector2(-s * 0.3, -s * 0.66), pos + Vector2(0, -s * 0.76),
+		pos + Vector2(s * 0.3, -s * 0.66), pos + Vector2(s * 0.58, -s * 0.5), pos + Vector2(0, -s * 0.54)])
+	ci.draw_colored_polygon(cap, fade(Color("d8c098"), a))
+	for p in [Vector2(-0.34, -0.58), Vector2(-0.16, -0.64), Vector2(0.16, -0.64), Vector2(0.34, -0.58), Vector2(-0.45, -0.53),
+			Vector2(0.45, -0.53), Vector2(0.0, -0.62)]:
+		ci.draw_colored_polygon(ellipse(pos + p * s, s * 0.04, s * 0.02, 8), fade(Color("8a6a48"), a))
+	ci.draw_colored_polygon(ellipse(pos + Vector2(0, -s * 0.74), s * 0.09, s * 0.04, 10), fade(Color("6a4a30"), a))
+	outline(ci, cap, fade(INK, 0.55 * a), maxf(1.2, s * 0.03))
+
+
+static func _lions_mane(ci: CanvasItem, pos: Vector2, s: float, a: float) -> void:
+	shadow(ci, pos + Vector2(0, s * 0.24), s * 0.4, s * 0.07, a)
+	var c := pos + Vector2(0, -s * 0.36)
+	ci.draw_colored_polygon(ellipse(c, s * 0.4, s * 0.3, 24), fade(Color("f5efe0"), a))
+	for k in 24:
+		var x := -0.38 + k * 0.033
+		var top := c + Vector2(x * s, -s * 0.05 + absf(x) * s * 0.3)
+		var length := s * (0.3 + 0.12 * sin(k * 2.7))
+		var tip := top + Vector2(sin(k * 1.3) * s * 0.03, length)
+		ci.draw_line(top, tip, fade(Color("e0d8c0") if k % 2 == 0 else Color("fffaf0"), a), maxf(1.5, s * 0.035), true)
+	ci.draw_colored_polygon(ellipse(c + Vector2(-s * 0.12, -s * 0.12), s * 0.14, s * 0.07, 12), fade(Color.WHITE, 0.6 * a))
+	outline(ci, ellipse(c, s * 0.4, s * 0.3, 24), fade(INK, 0.35 * a), maxf(1.0, s * 0.025))
+
+
+static func _bleeding_tooth(ci: CanvasItem, pos: Vector2, s: float, a: float) -> void:
+	shadow(ci, pos + Vector2(0, s * 0.24), s * 0.36, s * 0.07, a)
+	_stem(ci, pos, s, a, -s * 0.12, s * 0.12, s * 0.16, Color("b88a7a"))
+	var cap := PackedVector2Array()
+	for i in 22:
+		var ang := PI + PI * i / 21.0
+		var w := 1.0 + 0.08 * sin(ang * 7.0)
+		cap.append(pos + Vector2(cos(ang) * s * 0.5 * w, -s * 0.14 + sin(ang) * s * 0.4 * w))
+	ci.draw_colored_polygon(cap, fade(Color("f2e4e0"), a))
+	ci.draw_colored_polygon(ellipse(pos + Vector2(s * 0.12, -s * 0.3), s * 0.26, s * 0.14, 14), fade(Color("e8c8c8"), 0.6 * a))
+	for p in [Vector2(-0.22, -0.34), Vector2(0.05, -0.44), Vector2(0.26, -0.3), Vector2(-0.05, -0.24), Vector2(0.18, -0.46)]:
+		var d: Vector2 = pos + p * s
+		ci.draw_circle(d, s * 0.055, fade(Color("c82838"), a))
+		ci.draw_circle(d + Vector2(-s * 0.018, -s * 0.018), s * 0.018, fade(Color.WHITE, 0.8 * a))
+	outline(ci, cap, fade(INK, 0.55 * a), maxf(1.2, s * 0.03))
 
 
 ## Toadstool with a shaded stem, gills, a shaded dome, a highlight and spots.
 ## pos is where the stem meets the ground.
-static func mushroom(ci: CanvasItem, pos: Vector2, s: float, cap: Color, a: float = 1.0, glow_on: bool = false) -> void:
+static func mushroom(ci: CanvasItem, pos: Vector2, s: float, cap: Color, a: float = 1.0, glow_on: bool = false,
+		spots: bool = true, stem_color: Color = Color("efe3c8")) -> void:
 	var line_w := maxf(1.2, s * 0.035)
 	if glow_on:
 		glow(ci, pos + Vector2(0, -s * 0.35), s * 1.1, fade(cap, 0.45 * a))
@@ -88,9 +353,9 @@ static func mushroom(ci: CanvasItem, pos: Vector2, s: float, cap: Color, a: floa
 
 	var stem := PackedVector2Array([pos + Vector2(-s * 0.14, s * 0.25), pos + Vector2(-s * 0.10, -s * 0.28),
 		pos + Vector2(s * 0.10, -s * 0.28), pos + Vector2(s * 0.15, s * 0.25)])
-	ci.draw_colored_polygon(stem, fade(Color("efe3c8"), a))
+	ci.draw_colored_polygon(stem, fade(stem_color, a))
 	ci.draw_colored_polygon(PackedVector2Array([pos + Vector2(s * 0.03, s * 0.25), pos + Vector2(s * 0.03, -s * 0.28),
-		pos + Vector2(s * 0.10, -s * 0.28), pos + Vector2(s * 0.15, s * 0.25)]), fade(Color("cdbb96"), a))
+		pos + Vector2(s * 0.10, -s * 0.28), pos + Vector2(s * 0.15, s * 0.25)]), fade(stem_color.darkened(0.15), a))
 	outline(ci, stem, fade(INK, 0.55 * a), line_w)
 
 	ci.draw_colored_polygon(ellipse(pos + Vector2(0, -s * 0.27), s * 0.5, s * 0.09, 20), fade(cap.darkened(0.45), a))
@@ -107,7 +372,7 @@ static func mushroom(ci: CanvasItem, pos: Vector2, s: float, cap: Color, a: floa
 	ci.draw_colored_polygon(shade, fade(cap.darkened(0.18), a))
 	ci.draw_colored_polygon(ellipse(pos + Vector2(-s * 0.2, -s * 0.58), s * 0.16, s * 0.08, 14), fade(cap.lightened(0.45), 0.8 * a))
 
-	var dot := fade(Color(1, 0.98, 0.92, 0.9), a)
+	var dot := fade(Color(1, 0.98, 0.92, 0.9), a if spots else 0.0)
 	ci.draw_circle(pos + Vector2(-s * 0.3, -s * 0.42), s * 0.07, dot)
 	ci.draw_circle(pos + Vector2(s * 0.05, -s * 0.64), s * 0.06, dot)
 	ci.draw_circle(pos + Vector2(s * 0.32, -s * 0.42), s * 0.08, dot)
@@ -355,48 +620,115 @@ static func hut_cauldron(pos: Vector2, s: float) -> Vector2:
 	return pos + Vector2(s * 0.66, s * 0.12)
 
 
-## Witch's hut: stone footing, plank walls, shingled roof, chimney, arched
-## glowing door, round windows, a roof mushroom and a cauldron outside.
-static func hut(ci: CanvasItem, pos: Vector2, s: float, t: float = 0.0) -> void:
+## Witch's hut: stone footing and steps, plank walls with ivy, shingled roof
+## with a moon sign, chimney, arched glowing door with a lantern, round windows
+## with flower boxes, firewood, a roof mushroom and a cauldron outside.
+## broken (0 = whole, up to Data.HUT_HP - 1) adds damage in stages: cracks and
+## missing shingles, a broken window and loose door, a roof hole and broken
+## chimney, then a boarded window and soot.
+static func hut(ci: CanvasItem, pos: Vector2, s: float, t: float = 0.0, broken: int = 0) -> void:
 	var ink := fade(INK, 0.8)
 	var line_w := maxf(1.5, s * 0.015)
-	shadow(ci, pos + Vector2(0, s * 0.33), s * 0.75, s * 0.12)
+	var dark_wood := Color("3e2c22")
+	var hole := Color("140e0c")
+	shadow(ci, pos + Vector2(0, s * 0.35), s * 0.8, s * 0.13)
 
+	# Firewood stacked against the left wall.
+	for row in 3:
+		for k in 3 - row:
+			var lp := pos + Vector2(-s * 0.72 + k * s * 0.09 + row * s * 0.045, s * 0.22 - row * s * 0.08)
+			ci.draw_circle(lp, s * 0.045, Color("7a5236"))
+			ci.draw_circle(lp, s * 0.028, Color("c8a070"))
+
+	# Chimney (drawn before the roof so the roof overlaps its base).
 	var ch := hut_chimney(pos, s)
-	var chimney := Rect2(ch.x - s * 0.07, ch.y, s * 0.14, s * 0.3)
+	var ch_h := s * 0.3 if broken < 3 else s * 0.2
+	var chimney := Rect2(ch.x - s * 0.07, ch.y + (s * 0.3 - ch_h), s * 0.14, ch_h)
 	ci.draw_rect(chimney, Color("6a6470"))
-	ci.draw_rect(Rect2(chimney.position + Vector2(-s * 0.015, -s * 0.04), Vector2(s * 0.17, s * 0.05)), Color("4d4853"))
+	for k in 3:
+		ci.draw_line(Vector2(chimney.position.x, chimney.position.y + k * s * 0.07 + s * 0.04),
+			Vector2(chimney.end.x, chimney.position.y + k * s * 0.07 + s * 0.04), Color("55505c"), 1.0)
+	if broken < 3:
+		ci.draw_rect(Rect2(chimney.position + Vector2(-s * 0.015, -s * 0.04), Vector2(s * 0.17, s * 0.05)), Color("4d4853"))
+	else:
+		ci.draw_colored_polygon(PackedVector2Array([chimney.position, chimney.position + Vector2(s * 0.05, -s * 0.05),
+			chimney.position + Vector2(s * 0.09, -s * 0.01), chimney.position + Vector2(s * 0.14, -s * 0.06),
+			chimney.position + Vector2(s * 0.14, 0)]), Color("6a6470"))
 	ci.draw_rect(chimney, ink, false, line_w)
 
+	# Stone footing and door steps.
 	ci.draw_rect(Rect2(pos.x - s * 0.55, pos.y + s * 0.18, s * 1.1, s * 0.14), Color("55505c"))
 	for i in 8:
 		var sx := pos.x - s * 0.5 + i * s * 0.143
 		ci.draw_colored_polygon(ellipse(Vector2(sx, pos.y + s * 0.25), s * 0.07, s * 0.05, 10),
 			Color("6e6878") if i % 2 == 0 else Color("625c6c"))
+	ci.draw_rect(Rect2(pos.x - s * 0.18, pos.y + s * 0.3, s * 0.36, s * 0.05), Color("7a7488"))
+	ci.draw_rect(Rect2(pos.x - s * 0.24, pos.y + s * 0.35, s * 0.48, s * 0.05), Color("6a6478"))
 
+	# Plank walls, corner posts and a beam.
 	var walls := Rect2(pos.x - s * 0.5, pos.y - s * 0.4, s, s * 0.6)
 	ci.draw_rect(walls, Color("6b4f3a"))
 	for i in range(1, 10):
 		var px := walls.position.x + i * s * 0.1
 		ci.draw_line(Vector2(px, walls.position.y), Vector2(px, walls.end.y), Color("56402f"), line_w)
-	ci.draw_rect(Rect2(walls.position.x, walls.position.y, s * 0.06, walls.size.y), Color("3e2c22"))
-	ci.draw_rect(Rect2(walls.end.x - s * 0.06, walls.position.y, s * 0.06, walls.size.y), Color("3e2c22"))
-	ci.draw_rect(Rect2(walls.position.x, pos.y - s * 0.02, s, s * 0.04), Color("3e2c22"))
+	if broken >= 3:
+		ci.draw_rect(Rect2(walls.position.x + s * 0.7, walls.position.y + s * 0.3, s * 0.1, s * 0.25), hole)
+		ci.draw_colored_polygon(PackedVector2Array([walls.position + Vector2(s * 0.7, s * 0.55), walls.position + Vector2(s * 0.8, s * 0.55),
+			walls.position + Vector2(s * 0.95, s * 0.66), walls.position + Vector2(s * 0.86, s * 0.68)]), Color("6b4f3a"))
+	ci.draw_rect(Rect2(walls.position.x, walls.position.y, s * 0.06, walls.size.y), dark_wood)
+	ci.draw_rect(Rect2(walls.end.x - s * 0.06, walls.position.y, s * 0.06, walls.size.y), dark_wood)
+	ci.draw_rect(Rect2(walls.position.x, pos.y - s * 0.02, s, s * 0.04), dark_wood)
 	ci.draw_rect(walls, ink, false, line_w)
 
-	for w in hut_windows(pos, s):
-		ci.draw_circle(w, s * 0.1, Color("ffd27a"))
-		ci.draw_line(w + Vector2(-s * 0.1, 0), w + Vector2(s * 0.1, 0), Color("3e2c22"), line_w * 1.4)
-		ci.draw_line(w + Vector2(0, -s * 0.1), w + Vector2(0, s * 0.1), Color("3e2c22"), line_w * 1.4)
-		ci.draw_arc(w, s * 0.1, 0, TAU, 24, Color("3e2c22"), line_w * 2.0, true)
+	# Ivy up the left corner.
+	var ivy := PackedVector2Array()
+	for k in 9:
+		ivy.append(pos + Vector2(-s * 0.46 + sin(k * 1.3) * s * 0.03, s * 0.18 - k * s * 0.07))
+	ci.draw_polyline(ivy, Color("3f6a3a"), line_w * 1.2, true)
+	for k in range(1, 9):
+		ci.draw_circle(ivy[k] + Vector2((k % 2) * s * 0.03 - s * 0.015, 0), s * 0.022, Color("5a8a4a"))
 
+	# Windows, with flower boxes; the right one is boarded up late on.
+	var wins := hut_windows(pos, s)
+	for i in wins.size():
+		var w: Vector2 = wins[i]
+		if i == 1 and broken >= 4:
+			ci.draw_circle(w, s * 0.1, hole)
+			ci.draw_line(w + Vector2(-s * 0.13, -s * 0.09), w + Vector2(s * 0.13, s * 0.09), Color("8a6242"), s * 0.035)
+			ci.draw_line(w + Vector2(-s * 0.13, s * 0.09), w + Vector2(s * 0.13, -s * 0.09), Color("8a6242"), s * 0.035)
+		elif i == 0 and broken >= 2:
+			ci.draw_circle(w, s * 0.1, Color("c8a050"))
+			ci.draw_polyline(PackedVector2Array([w + Vector2(-s * 0.08, -s * 0.05), w + Vector2(-s * 0.01, 0), w + Vector2(s * 0.03, -s * 0.07)]),
+				hole, line_w, true)
+			ci.draw_polyline(PackedVector2Array([w + Vector2(-s * 0.01, 0), w + Vector2(s * 0.02, s * 0.08)]), hole, line_w, true)
+			ci.draw_line(w + Vector2(-s * 0.1, 0), w + Vector2(0, 0), dark_wood, line_w * 1.4)
+		else:
+			ci.draw_circle(w, s * 0.1, Color("ffd27a"))
+			ci.draw_line(w + Vector2(-s * 0.1, 0), w + Vector2(s * 0.1, 0), dark_wood, line_w * 1.4)
+			ci.draw_line(w + Vector2(0, -s * 0.1), w + Vector2(0, s * 0.1), dark_wood, line_w * 1.4)
+		ci.draw_arc(w, s * 0.1, 0, TAU, 24, dark_wood, line_w * 2.0, true)
+		var box := Rect2(w.x - s * 0.12, w.y + s * 0.11, s * 0.24, s * 0.05)
+		ci.draw_rect(box, Color("7a5236"))
+		for k in 4:
+			var fc: Color = [Color("f5a8c8"), Color("ffe07a"), Color("c8b0f0"), Color("f5a8c8")][k]
+			ci.draw_circle(Vector2(box.position.x + s * 0.035 + k * s * 0.055, box.position.y - s * 0.012), s * 0.018, fc)
+
+	# Arched door, hanging ajar once the hut is badly hit, and its lantern.
 	var door_top := pos + Vector2(0, -s * 0.02)
-	ci.draw_circle(door_top, s * 0.13, Color("3e2c22"))
-	ci.draw_rect(Rect2(pos.x - s * 0.13, door_top.y, s * 0.26, s * 0.2), Color("3e2c22"))
+	ci.draw_circle(door_top, s * 0.13, dark_wood)
+	ci.draw_rect(Rect2(pos.x - s * 0.13, door_top.y, s * 0.26, s * 0.2), dark_wood)
 	ci.draw_circle(door_top, s * 0.1, Color("f0b35a"))
 	ci.draw_rect(Rect2(pos.x - s * 0.1, door_top.y, s * 0.2, s * 0.2), Color("f0b35a"))
 	ci.draw_rect(Rect2(pos.x - s * 0.1, door_top.y + s * 0.1, s * 0.2, s * 0.1), Color("e09a45"))
+	if broken >= 2:
+		ci.draw_colored_polygon(PackedVector2Array([pos + Vector2(-s * 0.1, -s * 0.02), pos + Vector2(-s * 0.02, s * 0.0),
+			pos + Vector2(-s * 0.04, s * 0.18), pos + Vector2(-s * 0.1, s * 0.18)]), Color("5a3a26"))
+	var lamp := hut_lamp(pos, s)
+	ci.draw_line(lamp + Vector2(-s * 0.05, -s * 0.06), lamp + Vector2(0, -s * 0.06), dark_wood, line_w)
+	ci.draw_rect(Rect2(lamp.x - s * 0.025, lamp.y - s * 0.04, s * 0.05, s * 0.07), Color("ffcf7a") if broken < 4 else Color("3a3028"))
+	ci.draw_rect(Rect2(lamp.x - s * 0.025, lamp.y - s * 0.04, s * 0.05, s * 0.07), ink, false, 1.0)
 
+	# Roof: shingles, missing ones and a hole with rafters as damage grows.
 	var roof := PackedVector2Array([pos + Vector2(-s * 0.72, -s * 0.34), pos + Vector2(0, -s * 1.02), pos + Vector2(s * 0.72, -s * 0.34)])
 	ci.draw_colored_polygon(roof, Color("3e2f2a"))
 	for row in 5:
@@ -406,10 +738,41 @@ static func hut(ci: CanvasItem, pos: Vector2, s: float, t: float = 0.0) -> void:
 		while x < half - s * 0.06:
 			ci.draw_arc(pos + Vector2(x, y), s * 0.06, 0.1, PI - 0.1, 8, Color("2a201d"), line_w, true)
 			x += s * 0.12
+	var missing := [Vector2(-0.3, -0.52), Vector2(0.18, -0.64), Vector2(0.38, -0.46), Vector2(-0.08, -0.78), Vector2(-0.44, -0.42)]
+	for k in mini(broken * 2, missing.size()):
+		ci.draw_rect(Rect2(pos + missing[k] * s, Vector2(s * 0.1, s * 0.06)), Color("1e1612"))
+	if broken >= 3:
+		var hole_pts := PackedVector2Array([pos + Vector2(-s * 0.2, -s * 0.62), pos + Vector2(-s * 0.05, -s * 0.74),
+			pos + Vector2(s * 0.08, -s * 0.66), pos + Vector2(s * 0.02, -s * 0.5), pos + Vector2(-s * 0.16, -s * 0.48)])
+		if broken >= 4:
+			hole_pts = PackedVector2Array([pos + Vector2(-s * 0.3, -s * 0.6), pos + Vector2(-s * 0.05, -s * 0.8),
+				pos + Vector2(s * 0.2, -s * 0.66), pos + Vector2(s * 0.12, -s * 0.44), pos + Vector2(-s * 0.24, -s * 0.44)])
+		ci.draw_colored_polygon(hole_pts, hole)
+		for k in 3:
+			var rx := -0.2 + k * 0.12
+			ci.draw_line(pos + Vector2(rx * s, -s * 0.46), pos + Vector2((rx + 0.1) * s, -s * 0.76), Color("5a3a26"), line_w * 2.0, true)
 	ci.draw_colored_polygon(PackedVector2Array([pos + Vector2(0, -s * 1.02), pos + Vector2(s * 0.72, -s * 0.34),
 		pos + Vector2(s * 0.5, -s * 0.34)]), Color(0, 0, 0, 0.18))
 	outline(ci, roof, ink, line_w * 1.5)
+	ci.draw_line(pos + Vector2(0, -s * 1.02), pos + Vector2(0, -s * 1.14), dark_wood, line_w * 1.5)
+	ci.draw_circle(pos + Vector2(0, -s * 1.18), s * 0.05, Color("f0d890"))
+	ci.draw_circle(pos + Vector2(s * 0.022, -s * 1.195), s * 0.042, Color("3e2f2a"))
 	mushroom(ci, pos + Vector2(-s * 0.52, -s * 0.36), s * 0.22, Color("b58fd6"))
+
+	# Cracks, soot and rubble.
+	if broken >= 1:
+		ci.draw_polyline(PackedVector2Array([walls.position + Vector2(s * 0.2, s * 0.05), walls.position + Vector2(s * 0.26, s * 0.16),
+			walls.position + Vector2(s * 0.22, s * 0.26), walls.position + Vector2(s * 0.3, s * 0.36)]), hole, line_w * 1.3, true)
+		ci.draw_colored_polygon(PackedVector2Array([walls.end + Vector2(-s * 0.1, -s * 0.5), walls.end + Vector2(-s * 0.02, -s * 0.52),
+			walls.end + Vector2(s * 0.04, -s * 0.3), walls.end + Vector2(-s * 0.03, -s * 0.29)]), Color("7a5a42"))
+	if broken >= 2:
+		for k in 5:
+			var rb := pos + Vector2(-s * 0.4 + k * s * 0.2 + sin(k * 3.1) * s * 0.05, s * 0.4 + sin(k * 1.7) * s * 0.03)
+			ci.draw_rect(Rect2(rb, Vector2(s * 0.07, s * 0.025)), Color("5a4030"))
+	if broken >= 4:
+		for k in 3:
+			ci.draw_colored_polygon(ellipse(pos + Vector2(-s * 0.25 + k * s * 0.3, -s * 0.28 + k * s * 0.05), s * 0.1, s * 0.06, 12),
+				Color(0.05, 0.03, 0.03, 0.4))
 
 	var cc := hut_cauldron(pos, s)
 	shadow(ci, cc + Vector2(0, s * 0.08), s * 0.12, s * 0.03)
@@ -417,6 +780,15 @@ static func hut(ci: CanvasItem, pos: Vector2, s: float, t: float = 0.0) -> void:
 	ci.draw_colored_polygon(ellipse(cc + Vector2(0, -s * 0.06), s * 0.1, s * 0.035, 16), Color("3d3837"))
 	ci.draw_colored_polygon(ellipse(cc + Vector2(0, -s * 0.06), s * 0.08, s * 0.025, 16),
 		Color("7fd67a").lightened(0.1 * sin(t * 3.0)))
+
+
+static func hut_lamp(pos: Vector2, s: float) -> Vector2:
+	return pos + Vector2(s * 0.19, -s * 0.06)
+
+
+## Where smoke rises from the roof hole once the hut is badly damaged.
+static func hut_roof_hole(pos: Vector2, s: float) -> Vector2:
+	return pos + Vector2(-s * 0.05, -s * 0.62)
 
 
 static func lantern_lamp(pos: Vector2, s: float) -> Vector2:
@@ -458,6 +830,8 @@ static func heart(ci: CanvasItem, pos: Vector2, s: float, color: Color) -> void:
 
 ## Four-point twinkle star.
 static func sparkle(ci: CanvasItem, pos: Vector2, s: float, color: Color) -> void:
+	if s < 0.5:
+		return
 	var k := s * 0.25
 	ci.draw_colored_polygon(PackedVector2Array([pos + Vector2(0, -s), pos + Vector2(k, -k), pos + Vector2(s, 0),
 		pos + Vector2(k, k), pos + Vector2(0, s), pos + Vector2(-k, k), pos + Vector2(-s, 0), pos + Vector2(-k, -k)]), color)

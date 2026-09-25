@@ -10,7 +10,13 @@ const Art = preload("res://scripts/art.gd")
 
 const POT := Vector2(360, 700)
 const STIR_TURNS := 3.0
-const SLOT_W := 144.0
+const SLOT_W := 90.0
+const SHELF_TOP := 128.0
+const ROW_H := 108.0
+const PER_ROW := 8
+const PER_PAGE := 4
+const PAGE_PREV := Rect2(520, 988, 48, 34)
+const PAGE_NEXT := Rect2(652, 988, 48, 34)
 const EMPTY_BTN := Rect2(560, 928, 140, 44)
 const FIRE := Vector2(360, 942)
 const WINDOW := Vector2(72, 520)
@@ -38,6 +44,7 @@ var popups := []
 var particles := []
 var flyers := []
 var cell_flash := {}
+var book_page := 0
 var murk := 0.0
 var t := 0.0
 var steam_timer := 0.0
@@ -139,11 +146,17 @@ func _on_press(p: Vector2) -> void:
 	if EMPTY_BTN.has_point(p) and not pot.is_empty():
 		return_pot()
 		return
-	if p.y > 140.0 and p.y < 330.0:
-		var i := int(p.x / SLOT_W)
-		if i >= 0 and i < 5:
+	if PAGE_PREV.has_point(p):
+		book_page = posmod(book_page - 1, _page_count())
+		return
+	if PAGE_NEXT.has_point(p):
+		book_page = posmod(book_page + 1, _page_count())
+		return
+	if p.y > SHELF_TOP and p.y < SHELF_TOP + ROW_H * 2.0:
+		var i := slot_at(p)
+		if i >= 0:
 			var id: String = Data.ingredient_order[i]
-			if Data.inventory[id] > 0 and pot.size() < 2:
+			if Data.is_unlocked(id) and Data.inventory[id] > 0 and pot.size() < 2:
 				dragging = id
 		return
 	if pot.size() == 2 and p.distance_to(POT) < 240.0:
@@ -189,6 +202,7 @@ func _finish_brew() -> void:
 	Data.bottles[id] += 1
 	_burst(SURFACE, info["color"], 30, 260.0)
 	flyers.append({"id": id, "t": 0.0})
+	book_page = floori(float(Data.potion_order.find(id)) / PER_PAGE)
 	if not Data.discovered.has(id):
 		Data.discovered[id] = true
 		_popup("New recipe: %s!" % info["name"], info["color"].lightened(0.25))
@@ -259,8 +273,26 @@ func _update_particles(delta: float) -> void:
 
 # ---------------------------------------------------------------- drawing ---
 
+## Centre of the jar for ingredient i: two shelf rows of PER_ROW jars.
+func slot_center(i: int) -> Vector2:
+	return Vector2(SLOT_W * (i % PER_ROW) + SLOT_W / 2.0, SHELF_TOP + 64.0 + floori(float(i) / PER_ROW) * ROW_H)
+
+
+func slot_at(p: Vector2) -> int:
+	if p.y < SHELF_TOP or p.y >= SHELF_TOP + ROW_H * 2.0 or p.x < 0.0 or p.x >= SLOT_W * PER_ROW:
+		return -1
+	var i := int((p.y - SHELF_TOP) / ROW_H) * PER_ROW + int(p.x / SLOT_W)
+	return i if i < Data.ingredient_order.size() else -1
+
+
+func _page_count() -> int:
+	return ceili(float(Data.potion_order.size()) / PER_PAGE)
+
+
+## Recipe book cell for potion i, on whichever page it lives.
 func _cell_rect(i: int) -> Rect2:
-	return Rect2(20 + (i % 2) * 350, 1035 + floori(i / 2.0) * 118, 330, 106)
+	var k := i % PER_PAGE
+	return Rect2(20 + (k % 2) * 350, 1035 + floori(k / 2.0) * 118, 330, 106)
 
 
 func _bottle_spot(i: int) -> Vector2:
@@ -303,11 +335,11 @@ func _paint_room(ci: CanvasItem) -> void:
 		ci.draw_rect(Rect2(598 + b * 14, 556 + b * 4, 12, 3), Color(1, 0.9, 0.6, 0.5))
 
 	# Hanging herb bundles.
-	for h in [[112.0, 70.0, Color("7d9a5c")], [162.0, 92.0, Color("9a7a4c")], [560.0, 82.0, Color("8a6a9c")], [606.0, 64.0, Color("7d9a5c")]]:
+	for h in [[112.0, 62.0, Color("7d9a5c")], [162.0, 80.0, Color("9a7a4c")], [560.0, 72.0, Color("8a6a9c")], [606.0, 56.0, Color("7d9a5c")]]:
 		var x: float = h[0]
-		var end := Vector2(x, 346.0 + h[1])
+		var end := Vector2(x, 356.0 + h[1])
 		var col: Color = h[2]
-		ci.draw_line(Vector2(x, 346), end, Color("c8b48a"), 2.0, true)
+		ci.draw_line(Vector2(x, 356), end, Color("c8b48a"), 2.0, true)
 		for k in 5:
 			var ang := PI / 2.0 + (k - 2) * 0.28
 			var tip := end + Vector2.from_angle(ang) * 46.0
@@ -330,11 +362,13 @@ func _paint_room(ci: CanvasItem) -> void:
 		PackedColorArray([Color(0, 0, 0, 0.0), Color(0, 0, 0, 0.0), Color(0, 0, 0, 0.35), Color(0, 0, 0, 0.35)]))
 
 	# Ingredient shelf.
-	ci.draw_rect(Rect2(0, 326, 720, 22), Color("7a5a3e"))
-	ci.draw_rect(Rect2(0, 326, 720, 4), Color("9a7a5a"))
-	ci.draw_rect(Rect2(0, 348, 720, 8), Color(0, 0, 0, 0.3))
-	for x in [30.0, 690.0]:
-		ci.draw_colored_polygon(PackedVector2Array([Vector2(x - 10, 348), Vector2(x + 10, 348), Vector2(x - 10, 384)]), Color("4a3424"))
+	for row in 2:
+		var y := SHELF_TOP + (row + 1) * ROW_H - 12.0
+		ci.draw_rect(Rect2(0, y, 720, 18), Color("7a5a3e"))
+		ci.draw_rect(Rect2(0, y, 720, 4), Color("9a7a5a"))
+		ci.draw_rect(Rect2(0, y + 18, 720, 7), Color(0, 0, 0, 0.3))
+		for x in [30.0, 690.0]:
+			ci.draw_colored_polygon(PackedVector2Array([Vector2(x - 10, y + 18), Vector2(x + 10, y + 18), Vector2(x - 10, y + 44)]), Color("4a3424"))
 
 
 func _paint_window(ci: CanvasItem) -> void:
@@ -362,7 +396,7 @@ func _paint_light_under(ci: CanvasItem) -> void:
 func _paint_objects(ci: CanvasItem) -> void:
 	var rid := ci.get_canvas_item()
 	var font := ThemeDB.fallback_font
-	for i in 5:
+	for i in Data.ingredient_order.size():
 		_paint_jar(ci, rid, font, i)
 	_paint_candle(ci)
 	_paint_fire(ci)
@@ -385,24 +419,29 @@ func _paint_objects(ci: CanvasItem) -> void:
 
 func _paint_jar(ci: CanvasItem, rid: RID, font: Font, i: int) -> void:
 	var id: String = Data.ingredient_order[i]
+	var c := slot_center(i)
+	var unlocked := Data.is_unlocked(id)
 	var n: int = Data.inventory[id] - (1 if dragging == id else 0)
-	var cx := SLOT_W * i + SLOT_W / 2.0
-	Art.shadow(ci, Vector2(cx, 326), 46, 6)
-	var body := Rect2(cx - 46, 188, 92, 136)
+	Art.shadow(ci, Vector2(c.x, c.y + 38), 32, 5)
+	var body := Rect2(c.x - 32, c.y - 30, 64, 70)
 	jar_box.draw(rid, body)
-	Art.ingredient(ci, id, Vector2(cx, 258), 66, 1.0 if n > 0 else 0.25)
-	ci.draw_line(Vector2(cx - 34, 204), Vector2(cx - 34, 270), Color(1, 1, 1, 0.28), 4.0, true)
-	ci.draw_rect(Rect2(cx - 44, 184, 88, 10), Color("6a4a30"))
-	ci.draw_rect(Rect2(cx - 38, 168, 76, 18), Color("8a6242"))
-	ci.draw_rect(Rect2(cx - 38, 168, 76, 5), Color("a88058"))
-	var tag := Rect2(cx - 28, 290, 56, 26)
-	ci.draw_rect(tag, Color("efe3c8"))
-	ci.draw_rect(tag, Color("8a6242"), false, 2.0)
-	ci.draw_string(font, tag.position + Vector2(0, 20), "x%d" % n, HORIZONTAL_ALIGNMENT_CENTER, tag.size.x, 19, Data.ink)
-	ci.draw_string_outline(font, Vector2(SLOT_W * i, 160), Data.ingredients[id]["name"], HORIZONTAL_ALIGNMENT_CENTER,
-		SLOT_W, 18, 4, Color(0, 0, 0, 0.5))
-	ci.draw_string(font, Vector2(SLOT_W * i, 160), Data.ingredients[id]["name"], HORIZONTAL_ALIGNMENT_CENTER,
-		SLOT_W, 18, Data.parchment)
+	ci.draw_rect(Rect2(c.x - 30, c.y - 34, 60, 7), Color("6a4a30"))
+	ci.draw_rect(Rect2(c.x - 26, c.y - 44, 52, 12), Color("8a6242"))
+	ci.draw_rect(Rect2(c.x - 26, c.y - 44, 52, 3), Color("a88058"))
+	if unlocked:
+		Art.ingredient(ci, id, c + Vector2(0, 6), 46, 1.0 if n > 0 else 0.25)
+		ci.draw_line(Vector2(c.x - 24, c.y - 22), Vector2(c.x - 24, c.y + 18), Color(1, 1, 1, 0.28), 3.0, true)
+		var tag := Rect2(c.x - 18, c.y + 22, 36, 18)
+		ci.draw_rect(tag, Color("efe3c8"))
+		ci.draw_rect(tag, Color("8a6242"), false, 1.5)
+		ci.draw_string(font, tag.position + Vector2(0, 14), "x%d" % n, HORIZONTAL_ALIGNMENT_CENTER, tag.size.x, 14, Data.ink)
+		var label: String = Data.ingredients[id]["short"]
+		ci.draw_string_outline(font, Vector2(c.x - 45, c.y - 49), label, HORIZONTAL_ALIGNMENT_CENTER, 90, 13, 4, Color(0, 0, 0, 0.6))
+		ci.draw_string(font, Vector2(c.x - 45, c.y - 49), label, HORIZONTAL_ALIGNMENT_CENTER, 90, 13, Data.parchment)
+	else:
+		ci.draw_string(font, Vector2(c.x - 32, c.y + 12), "?", HORIZONTAL_ALIGNMENT_CENTER, 64, 30, Color(1, 1, 1, 0.35))
+		ci.draw_string(font, Vector2(c.x - 45, c.y - 49), "Night %d" % Data.unlock_night(id), HORIZONTAL_ALIGNMENT_CENTER,
+			90, 12, Color(1, 1, 1, 0.45))
 
 
 func _paint_candle(ci: CanvasItem) -> void:
@@ -587,8 +626,16 @@ func _paint_ui(ci: CanvasItem) -> void:
 		Vector2(640, 1060)]), Color("b0413e"))
 	for x in [30.0, 380.0]:
 		ci.draw_line(Vector2(x, 1149), Vector2(x + 310, 1149), Art.fade(Data.ink, 0.15), 1.5)
-	for i in 4:
+	var first := book_page * PER_PAGE
+	for i in range(first, mini(first + PER_PAGE, Data.potion_order.size())):
 		_paint_recipe(ci, font, i)
+	var gold := Color("e8c77a")
+	for r in [PAGE_PREV, PAGE_NEXT]:
+		sign_box.draw(rid, r)
+	ci.draw_string(font, PAGE_PREV.position + Vector2(0, 25), "<", HORIZONTAL_ALIGNMENT_CENTER, PAGE_PREV.size.x, 22, gold)
+	ci.draw_string(font, PAGE_NEXT.position + Vector2(0, 25), ">", HORIZONTAL_ALIGNMENT_CENTER, PAGE_NEXT.size.x, 22, gold)
+	ci.draw_string(font, Vector2(PAGE_PREV.end.x, 1012), "%d/%d" % [book_page + 1, _page_count()], HORIZONTAL_ALIGNMENT_CENTER,
+		PAGE_NEXT.position.x - PAGE_PREV.end.x, 18, gold)
 
 	for p in popups:
 		var pt: float = p["t"]
@@ -618,13 +665,27 @@ func _paint_recipe(ci: CanvasItem, font: Font, i: int) -> void:
 	else:
 		Art.bottle(ci, _bottle_spot(i), 66, Color("b8ad96"), 0.45)
 	var name_text: String = info["name"] if known else "???"
-	ci.draw_string(font, cell.position + Vector2(95, 34), name_text, HORIZONTAL_ALIGNMENT_LEFT, -1, 23, Data.ink)
+	ci.draw_string(font, cell.position + Vector2(95, 34), name_text, HORIZONTAL_ALIGNMENT_LEFT, -1, 22, Data.ink)
+	var from_night := Data.potion_night(id)
 	if known:
-		var r: Array = info["recipe"]
-		Art.ingredient(ci, r[0], cell.position + Vector2(112, 64), 30)
-		ci.draw_string(font, cell.position + Vector2(132, 70), "+", HORIZONTAL_ALIGNMENT_LEFT, -1, 20, Data.ink)
-		Art.ingredient(ci, r[1], cell.position + Vector2(160, 64), 30)
+		# Each known recipe as a pair of mushroom icons; a second one reads "or ...".
+		var x := 112.0
+		var shown := 0
+		for r in info["recipes"]:
+			if not (Data.is_unlocked(r[0]) and Data.is_unlocked(r[1])):
+				continue
+			if shown > 0:
+				ci.draw_string(font, cell.position + Vector2(x - 12, 70), "or", HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Art.fade(Data.ink, 0.6))
+				x += 16.0
+			Art.ingredient(ci, r[0], cell.position + Vector2(x, 70), 30)
+			ci.draw_string(font, cell.position + Vector2(x + 18, 72), "+", HORIZONTAL_ALIGNMENT_LEFT, -1, 16, Data.ink)
+			Art.ingredient(ci, r[1], cell.position + Vector2(x + 44, 70), 30)
+			x += 90.0
+			shown += 1
+	elif from_night > Data.day:
+		ci.draw_string(font, cell.position + Vector2(95, 66), "Needs a mushroom from night %d" % from_night, HORIZONTAL_ALIGNMENT_LEFT,
+			230, 14, Art.fade(Data.ink, 0.55))
 	else:
 		ci.draw_string(font, cell.position + Vector2(95, 66), "Not yet discovered", HORIZONTAL_ALIGNMENT_LEFT, -1, 17, Art.fade(Data.ink, 0.55))
-	ci.draw_string(font, cell.position + Vector2(95, 96), "%d bottled" % Data.bottles[id], HORIZONTAL_ALIGNMENT_LEFT,
-		-1, 17, Data.moss)
+	ci.draw_string(font, cell.position + Vector2(95, 98), "%d bottled" % Data.bottles[id], HORIZONTAL_ALIGNMENT_LEFT,
+		-1, 16, Data.moss)

@@ -17,7 +17,8 @@ const HUT := Vector2(360, 1000)
 const HUT_SIZE := 160.0
 const POND := Vector2(360, 250)
 const BAR_Y := 1130.0
-const CELL_W := 180.0
+const CELL_W := 120.0
+const BAR_MAX := 6
 const NIGHT_FADE := 1.5
 const LANTERN_SIZE := 60.0
 const LEFT_PATH := [Vector2(40, 120), Vector2(180, 330), Vector2(110, 560), Vector2(250, 780), Vector2(330, 950)]
@@ -48,6 +49,9 @@ var fireflies := []
 var spawned := 0
 var queue := []
 var intro := {}
+var bar_page := 0
+var roar_t := 1.0
+var shake := 0.0
 var spawn_timer := 0.0
 var smoke_timer := 0.0
 var repelled := 0
@@ -78,7 +82,7 @@ var cell_selected_box: StyleBoxFlat
 
 
 func _ready() -> void:
-	cfg = Data.nights[Data.day - 1].duplicate(true)
+	cfg = Data.night_config(Data.day)
 	for kind in Data.creature_order:
 		for i in cfg["waves"].get(kind, 0):
 			queue.append(kind)
@@ -260,6 +264,9 @@ func start_night() -> void:
 func _process(delta: float) -> void:
 	t += delta
 	hit_flash = maxf(0.0, hit_flash - delta)
+	roar_t = minf(1.0, roar_t + delta * 1.1)
+	shake = maxf(0.0, shake - delta)
+	position = Vector2(randf_range(-1, 1), randf_range(-1, 1)) * shake * 14.0 if shake > 0.0 else Vector2.ZERO
 	var was := night_amt
 	if mode == "night":
 		night_amt = minf(1.0, night_amt + delta / NIGHT_FADE)
@@ -317,23 +324,34 @@ func _night_step(delta: float) -> void:
 		var dps := 0.0
 		var drowsy := false
 		var sticky := false
+		var frozen := false
+		var confused := false
 		e["hurt"] = maxf(0.0, e["hurt"] - delta)
 		for a in areas:
 			if e["pos"].distance_to(a["pos"]) < a["radius"]:
-				if a["id"] == "syrup" and info["flying"]:
-					continue
 				var d: Dictionary = Data.potions[a["id"]]
-				var s_mult: float = d["slow"]
-				if a["id"] == "syrup":
-					sticky = true
-					if info["heavy"]:
-						s_mult = maxf(s_mult, 0.5)
-				if a["id"] == "spore":
-					drowsy = true
+				if d["family"] == "ember":
+					continue
+				if info["flying"] and not d.get("flying", true):
+					continue
+				var s_mult: float = d.get("slow", 1.0)
+				if info["heavy"] and not d.get("heavy", true):
+					s_mult = maxf(s_mult, 0.5)
+				match d["family"]:
+					"syrup":
+						sticky = true
+					"spore":
+						drowsy = true
+					"frost":
+						frozen = true
+					"befuddle":
+						confused = true
 				slow = minf(slow, s_mult)
-				dps += d["dps"]
+				dps += d.get("dps", 0.0)
 		e["drowsy"] = drowsy
-		e["stuck"] = sticky and slow < 0.6
+		e["frozen"] = frozen
+		e["confused"] = confused and slow < 0.0
+		e["stuck"] = sticky and not frozen and slow >= 0.0 and slow < 0.6
 		e["courage"] -= dps * delta
 		if e["courage"] <= 0.0:
 			_scare(e)
@@ -341,7 +359,7 @@ func _night_step(delta: float) -> void:
 			_popup("Shoo!", e["pos"], Data.magic)
 			continue
 		var c: Curve2D = curves[e["path"]]
-		e["offset"] += e["speed"] * slow * delta
+		e["offset"] = maxf(0.0, e["offset"] + e["speed"] * slow * delta)
 		if e["offset"] >= c.get_baked_length():
 			var blocked := 0
 			var hits := 0
@@ -358,8 +376,13 @@ func _night_step(delta: float) -> void:
 				_burst(e["pos"], Data.magic, 16, 180.0)
 			else:
 				hit_flash = 0.4
+				shake = maxf(shake, 0.2)
 				_popup("-%d" % hits, HUT + Vector2(0, -170), Color("ff7a6b"))
 				_burst(e["pos"], Color("ff7a6b"), 12, 140.0)
+				for i in 6 * hits:
+					var from := HUT + Vector2(randf_range(-70, 70), randf_range(-140, 0))
+					_emit(from, Vector2(randf_range(-160, 160), randf_range(-260, -120)), 1.1, randf_range(5, 9),
+						Color("6b4f3a") if randf() < 0.6 else Color("3e2f2a"), "debris")
 			_scare(e)
 		else:
 			e["pos"] = c.sample_baked(e["offset"])
@@ -376,7 +399,8 @@ func _make_enemy(kind: String, path: int) -> Dictionary:
 	var courage: float = cfg["courage"] * info["courage"]
 	return {"kind": kind, "path": path, "offset": 0.0, "pos": curves[path].sample_baked(0.0),
 		"courage": courage, "max": courage, "speed": cfg["speed"] * info["speed"] * randf_range(0.9, 1.15),
-		"flee": -1.0, "dir": Vector2.UP, "seed": randf() * 10.0, "hurt": 0.0, "drowsy": false, "stuck": false}
+		"flee": -1.0, "dir": Vector2.UP, "seed": randf() * 10.0, "hurt": 0.0, "drowsy": false, "stuck": false,
+		"frozen": false, "confused": false}
 
 
 func _info(e: Dictionary) -> Dictionary:
@@ -394,16 +418,21 @@ func _scare(e: Dictionary) -> void:
 
 func _spawn_area(id: String, pos: Vector2) -> void:
 	var d: Dictionary = Data.potions[id]
-	areas.append({"id": id, "pos": pos, "radius": d["radius"], "time": d["duration"], "max": d["duration"],
+	var duration: float = d.get("duration", 0.5)
+	areas.append({"id": id, "pos": pos, "radius": d.get("radius", 0.0), "time": duration, "max": duration,
 		"sd": randf() * TAU})
-	if id == "ember":
-		_burst(pos, Color(1.0, 0.65, 0.25), 32, 320.0)
-	else:
-		_burst(pos, d["color"], 14, 160.0)
-	if d["burst"] > 0.0:
+	match d["family"]:
+		"ember":
+			_burst(pos, d["color"].lightened(0.2), 24 + int(d["radius"] / 8.0), 3.0 * d["radius"])
+		"frost":
+			_burst(pos, Color(0.85, 0.95, 1.0), 22, 2.0 * d["radius"])
+		_:
+			_burst(pos, d["color"], 14, 160.0)
+	var burst: float = d.get("burst", 0.0)
+	if burst > 0.0:
 		for e in enemies:
 			if e["flee"] < 0.0 and e["pos"].distance_to(pos) < d["radius"]:
-				e["courage"] -= d["burst"]
+				e["courage"] -= burst
 				e["hurt"] = 0.35
 
 
@@ -435,11 +464,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 	var p := get_global_mouse_position()
 	if p.y >= BAR_Y:
-		var i := int(p.x / CELL_W)
-		if i >= 0 and i < 4:
-			var id: String = Data.potion_order[i]
-			if Data.bottles[id] > 0:
-				selected = "" if selected == id else id
+		_bar_tap(p)
 		return
 	if mode == "fortify":
 		_fortify_tap(p)
@@ -453,20 +478,30 @@ func _fortify_tap(p: Vector2) -> void:
 			if s["trap"] != "":
 				Data.bottles[s["trap"]] += 1
 				s["trap"] = ""
-			elif selected != "" and selected != "ward":
+			elif selected != "" and _placeable(selected):
 				s["trap"] = selected
 				_burst(s["pos"], Data.potions[selected]["color"], 8, 90.0)
 				_use_selected()
 			return
-	if selected == "ward" and p.distance_to(HUT + Vector2(0, -60)) < 120.0:
-		_add_ward()
+	if selected == "":
+		return
+	var fam: String = Data.potions[selected]["family"]
+	if (fam == "ward" or fam == "mend") and p.distance_to(HUT + Vector2(0, -60)) < 120.0:
+		_use_hut_potion()
+	elif fam == "roar":
+		_popup("Save it for the night!", p, Data.parchment)
 
 
 func _night_tap(p: Vector2) -> void:
 	if selected == "":
 		return
-	if selected == "ward":
-		_add_ward()
+	var fam: String = Data.potions[selected]["family"]
+	if fam == "ward" or fam == "mend":
+		_use_hut_potion()
+		return
+	if fam == "roar":
+		_roar()
+		_use_selected()
 		return
 	# A free spot (empty, or its trap already burst) takes the bottle as a new trap.
 	# A spot still holding an unburst trap ignores the tap, so it can't be thrown by accident.
@@ -482,12 +517,77 @@ func _night_tap(p: Vector2) -> void:
 	_use_selected()
 
 
-func _add_ward() -> void:
-	ward += Data.potions["ward"]["ward"]
-	_popup("Ward +%d" % Data.potions["ward"]["ward"], HUT + Vector2(0, -170), Data.magic)
-	for p in _ward_points():
-		_burst(p, Data.magic, 5, 80.0)
+## Potions that can sit on a trap spot or be thrown onto the map.
+func _placeable(id: String) -> bool:
+	return Data.potions[id]["family"] in ["spore", "syrup", "ember", "frost", "befuddle"]
+
+
+## Ward and mend potions work on the hut, wherever you tap at night.
+func _use_hut_potion() -> void:
+	var d: Dictionary = Data.potions[selected]
+	if d["family"] == "ward":
+		ward += d["ward"]
+		_popup("Ward +%d" % d["ward"], HUT + Vector2(0, -170), Data.magic)
+		for p in _ward_points():
+			_burst(p, Data.magic, 5, 80.0)
+	else:
+		if hut_hp >= Data.HUT_HP:
+			_popup("The hut is already whole", HUT + Vector2(0, -170), Data.parchment)
+			return
+		var before := hut_hp
+		hut_hp = mini(Data.HUT_HP, hut_hp + int(d["heal"]))
+		_popup("Hut +%d" % (hut_hp - before), HUT + Vector2(0, -170), Color("9ad8ff"))
+		for i in 3:
+			_burst(HUT + Vector2(randf_range(-70, 70), randf_range(-120, 0)), d["color"].lightened(0.3), 8, 90.0)
 	_use_selected()
+
+
+## Lion's Roar: a shockwave from the hut that scares every creature on the map.
+func _roar() -> void:
+	var burst: float = Data.potions[selected]["burst"]
+	roar_t = 0.0
+	shake = 0.5
+	for e in enemies:
+		if e["flee"] < 0.0:
+			e["courage"] -= burst
+			e["hurt"] = 0.4
+	_popup("ROAR!", HUT + Vector2(0, -190), Color("f0c060"))
+
+
+func _bar_items() -> Array:
+	return Data.potion_order.filter(func(id): return Data.bottles[id] > 0)
+
+
+## Which bottles show in the bar: up to BAR_MAX, or BAR_MAX - 1 plus page arrows.
+func _bar_layout() -> Dictionary:
+	var items := _bar_items()
+	var paged := items.size() > BAR_MAX
+	var per := BAR_MAX - 1 if paged else BAR_MAX
+	var pages := maxi(1, ceili(float(items.size()) / per))
+	bar_page = clampi(bar_page, 0, pages - 1)
+	var shown := items.slice(bar_page * per, bar_page * per + per)
+	var x0 := 60.0 if paged else (720.0 - shown.size() * CELL_W) / 2.0
+	return {"shown": shown, "x0": x0, "paged": paged, "pages": pages}
+
+
+func _bar_tap(p: Vector2) -> void:
+	var lay := _bar_layout()
+	if lay["paged"] and p.x < 60.0:
+		bar_page = posmod(bar_page - 1, lay["pages"])
+		return
+	if lay["paged"] and p.x > 660.0:
+		bar_page = posmod(bar_page + 1, lay["pages"])
+		return
+	var shown: Array = lay["shown"]
+	var i := int((p.x - lay["x0"]) / CELL_W)
+	if p.x >= lay["x0"] and i >= 0 and i < shown.size():
+		var id: String = shown[i]
+		selected = "" if selected == id else id
+
+
+## How many hits the hut has taken: drives its damage stage.
+func _broken() -> int:
+	return clampi(Data.HUT_HP - hut_hp, 0, Data.HUT_HP - 1)
 
 
 func _slot_free(s: Dictionary) -> bool:
@@ -513,8 +613,11 @@ func _update_particles(delta: float) -> void:
 		smoke_timer = 0.3
 		_emit(Art.hut_chimney(HUT, HUT_SIZE), Vector2(randf_range(4, 12), randf_range(-28, -20)), 3.2, 7.0,
 			Color(0.75, 0.72, 0.82, 0.3), "smoke")
+		if _broken() >= 3:
+			_emit(Art.hut_roof_hole(HUT, HUT_SIZE) + Vector2(randf_range(-10, 10), 0), Vector2(randf_range(-6, 6), randf_range(-34, -24)),
+				2.6, 9.0, Color(0.2, 0.18, 0.2, 0.45), "smoke")
 	for a in areas:
-		if a["id"] == "spore" and randf() < 0.5:
+		if Data.potions[a["id"]]["family"] == "spore" and randf() < 0.5:
 			var off := Vector2.from_angle(randf() * TAU) * randf() * float(a["radius"])
 			_emit(a["pos"] + off, Vector2(randf_range(-8, 8), randf_range(-22, -8)), 1.4, 2.5, Color("d9b8ff"), "mote")
 
@@ -528,6 +631,8 @@ func _update_particles(delta: float) -> void:
 				v *= 0.9
 			"smoke":
 				v.x += 3.0 * delta
+			"debris":
+				v.y += 600.0 * delta
 		p["vel"] = v
 		p["pos"] += v * delta
 	particles = particles.filter(func(p): return p["life"] > 0.0)
@@ -716,14 +821,16 @@ func _paint_objects(ci: CanvasItem) -> void:
 			Art.bottle(ci, s["pos"] + Vector2(0, -10 + sin(t * 2.2 + i) * 3.0), 52, Data.potions[s["trap"]]["color"])
 
 	for a in areas:
-		if a["id"] == "syrup":
+		if Data.potions[a["id"]]["family"] == "syrup":
 			_paint_syrup(ci, a)
+		elif Data.potions[a["id"]]["family"] == "frost":
+			_paint_frost(ci, a)
 
 	if ward > 0:
 		var ring := Art.ellipse(HUT + Vector2(0, -40), 150, 118, 64)
 		ci.draw_colored_polygon(ring, Art.fade(Data.magic, 0.06))
 		Art.outline(ci, ring, Art.fade(Data.magic, 0.5 + 0.25 * sin(t * 4.0)), 3.0)
-	Art.hut(ci, HUT, HUT_SIZE, t)
+	Art.hut(ci, HUT, HUT_SIZE, t, _broken())
 	if ward > 0:
 		var pts := _ward_points()
 		for k in pts.size():
@@ -743,6 +850,16 @@ func _paint_objects(ci: CanvasItem) -> void:
 			var w: float = 40.0 * e["courage"] / e["max"]
 			ci.draw_rect(Rect2(pos.x - 20, top, 40, 6), Color(0, 0, 0, 0.55))
 			ci.draw_rect(Rect2(pos.x - 20, top, w, 6), Data.magic)
+		if e["frozen"] and e["flee"] < 0.0:
+			var ice := Rect2(pos.x - size * 0.6, pos.y - size * 0.95, size * 1.2, size * 1.45)
+			ci.draw_rect(ice, Color(0.75, 0.9, 1.0, 0.35))
+			ci.draw_rect(ice, Color(0.9, 0.97, 1.0, 0.8), false, 2.0)
+			ci.draw_line(ice.position + Vector2(6, 8), ice.position + Vector2(18, 26), Color(1, 1, 1, 0.8), 2.0, true)
+		if e["confused"] and e["flee"] < 0.0:
+			for k in 2:
+				var ang := t * 3.0 + k * PI
+				ci.draw_string(font, Vector2(pos.x - 6 + cos(ang) * 16, top - 4 + sin(ang) * 5), "?", HORIZONTAL_ALIGNMENT_LEFT,
+					-1, 20, Color("e0b0ff"))
 		if e["drowsy"] and e["flee"] < 0.0:
 			for k in 3:
 				var ph := fmod(t * 0.8 + k / 3.0, 1.0)
@@ -750,16 +867,33 @@ func _paint_objects(ci: CanvasItem) -> void:
 				ci.draw_string(font, zp, "z", HORIZONTAL_ALIGNMENT_LEFT, -1, 14 + int(ph * 8), Color(0.9, 0.85, 1.0, 1.0 - ph))
 
 	for a in areas:
-		if a["id"] == "spore":
-			_paint_spore(ci, a)
-		elif a["id"] == "ember":
-			_paint_ember(ci, a)
+		match Data.potions[a["id"]]["family"]:
+			"spore":
+				_paint_spore(ci, a)
+			"ember":
+				_paint_ember(ci, a)
+			"befuddle":
+				_paint_befuddle(ci, a)
+
+	if roar_t < 1.0:
+		var rr := roar_t * 950.0
+		ci.draw_arc(HUT + Vector2(0, -60), rr, 0, TAU, 96, Color(0.95, 0.75, 0.35, 1.0 - roar_t), 16.0 * (1.0 - roar_t) + 2.0, true)
+		ci.draw_arc(HUT + Vector2(0, -60), rr * 0.8, 0, TAU, 96, Color(1.0, 0.9, 0.6, 0.6 * (1.0 - roar_t)), 6.0, true)
 
 	for p in particles:
 		if p["kind"] == "smoke" or p["kind"] == "puff":
 			var f: float = p["life"] / p["max"]
 			var size: float = p["size"] * (1.0 + (1.0 - f) * 2.0)
 			Art.glow(ci, p["pos"], size * 2.0, Art.fade(p["color"], f))
+		elif p["kind"] == "debris":
+			var f: float = p["life"] / p["max"]
+			var ang: float = p["life"] * 9.0
+			var hs: float = p["size"]
+			var c: Vector2 = p["pos"]
+			var quad := PackedVector2Array()
+			for corner in [Vector2(-hs, -hs * 0.35), Vector2(hs, -hs * 0.35), Vector2(hs, hs * 0.35), Vector2(-hs, hs * 0.35)]:
+				quad.append(c + corner.rotated(ang))
+			ci.draw_colored_polygon(quad, Art.fade(p["color"], minf(1.0, f * 2.0)))
 
 	for p in popups:
 		var pt: float = p["t"]
@@ -781,7 +915,7 @@ func _paint_rune(ci: CanvasItem, pos: Vector2) -> void:
 
 func _paint_syrup(ci: CanvasItem, a: Dictionary) -> void:
 	var s := _area_strength(a)
-	var col: Color = Data.potions["syrup"]["color"]
+	var col: Color = Data.potions[a["id"]]["color"]
 	var r: float = a["radius"]
 	var sd: float = a["sd"]
 	var center: Vector2 = a["pos"]
@@ -791,7 +925,9 @@ func _paint_syrup(ci: CanvasItem, a: Dictionary) -> void:
 		var rr := r * (0.82 + 0.12 * sin(ang * 3.0 + sd) + 0.06 * sin(ang * 5.0 + sd * 2.0))
 		pts.append(center + Vector2(cos(ang), sin(ang) * 0.8) * rr)
 	ci.draw_colored_polygon(pts, Art.fade(col.darkened(0.15), 0.85 * s))
-	Art.outline(ci, pts, Art.fade(col.darkened(0.45), 0.8 * s), 2.0)
+	# Dark puddles (Ink Pool) get a light sheen at the edge so they show at night.
+	var edge := col.lightened(0.45) if col.v < 0.45 else col.darkened(0.45)
+	Art.outline(ci, pts, Art.fade(edge, 0.8 * s), 2.5)
 	ci.draw_colored_polygon(Art.ellipse(center + Vector2(-r * 0.25, -r * 0.2), r * 0.3, r * 0.12, 16), Art.fade(col.lightened(0.45), 0.6 * s))
 	for k in 4:
 		var ph := fmod(t * 0.9 + k * 0.37 + sd, 1.0)
@@ -801,7 +937,7 @@ func _paint_syrup(ci: CanvasItem, a: Dictionary) -> void:
 
 func _paint_spore(ci: CanvasItem, a: Dictionary) -> void:
 	var s := _area_strength(a)
-	var col: Color = Data.potions["spore"]["color"]
+	var col: Color = Data.potions[a["id"]]["color"]
 	var r: float = a["radius"]
 	var sd: float = a["sd"]
 	var center: Vector2 = a["pos"]
@@ -821,15 +957,61 @@ func _paint_ember(ci: CanvasItem, a: Dictionary) -> void:
 	var prog := 1.0 - life
 	var r: float = a["radius"]
 	var center: Vector2 = a["pos"]
-	Art.glow(ci, center, r * (0.6 + 0.6 * prog), Color(1, 0.6, 0.25, 0.7 * life))
-	ci.draw_arc(center, r * (0.3 + 0.8 * prog), 0, TAU, 48, Color(1, 0.8, 0.4, life), 10.0 * life + 1.0, true)
-	ci.draw_arc(center, r * (0.2 + 0.6 * prog), 0, TAU, 48, Color(1, 0.45, 0.2, life * 0.8), 5.0 * life + 1.0, true)
+	var col: Color = Data.potions[a["id"]]["color"]
+	Art.glow(ci, center, r * (0.6 + 0.6 * prog), Art.fade(col.lightened(0.1), 0.7 * life))
+	ci.draw_arc(center, r * (0.3 + 0.8 * prog), 0, TAU, 48, Art.fade(col.lightened(0.45), life), 10.0 * life + 1.0, true)
+	ci.draw_arc(center, r * (0.2 + 0.6 * prog), 0, TAU, 48, Art.fade(col, life * 0.8), 5.0 * life + 1.0, true)
+
+
+## Frost: a pale icy patch with spiky crystal edges and turning snowflakes.
+func _paint_frost(ci: CanvasItem, a: Dictionary) -> void:
+	var s := _area_strength(a)
+	var r: float = a["radius"]
+	var sd: float = a["sd"]
+	var center: Vector2 = a["pos"]
+	var pts := PackedVector2Array()
+	for k in 32:
+		var ang := TAU * k / 32.0
+		var rr := r * (0.92 if k % 2 == 0 else 0.78 + 0.08 * sin(sd + k))
+		pts.append(center + Vector2(cos(ang), sin(ang) * 0.8) * rr)
+	ci.draw_colored_polygon(pts, Color(0.78, 0.92, 1.0, 0.4 * s))
+	Art.outline(ci, pts, Color(0.92, 0.98, 1.0, 0.85 * s), 2.0)
+	for k in 7:
+		var ang := sd + k * 0.9
+		var fp := center + Vector2(cos(ang), sin(ang) * 0.8) * r * (0.25 + 0.5 * fmod(k * 0.37, 1.0))
+		var rot := t * 0.8 + k
+		for j in 3:
+			var dir := Vector2.from_angle(rot + j * PI / 3.0) * 7.0
+			ci.draw_line(fp - dir, fp + dir, Color(1, 1, 1, 0.9 * s), 1.5, true)
+
+
+## Befuddle: slowly turning violet spirals with a question mark or two.
+func _paint_befuddle(ci: CanvasItem, a: Dictionary) -> void:
+	var s := _area_strength(a)
+	var col: Color = Data.potions[a["id"]]["color"]
+	var r: float = a["radius"]
+	var center: Vector2 = a["pos"]
+	Art.glow(ci, center, r, Art.fade(col, 0.3 * s))
+	for k in 3:
+		var spiral := PackedVector2Array()
+		for j in 24:
+			var u := j / 23.0
+			var ang := t * (1.6 if k % 2 == 0 else -1.2) + k * TAU / 3.0 + u * 5.0
+			spiral.append(center + Vector2(cos(ang), sin(ang) * 0.8) * r * (0.1 + 0.85 * u))
+		ci.draw_polyline(spiral, Art.fade(col.lightened(0.3), 0.7 * s), 3.0, true)
 
 
 func _paint_light_over(ci: CanvasItem) -> void:
 	var n := night_amt
-	for w in Art.hut_windows(HUT, HUT_SIZE):
-		Art.glow(ci, w, 45, Art.fade(Data.lantern, 0.3 + 0.25 * n))
+	var broken := _broken()
+	var wins := Art.hut_windows(HUT, HUT_SIZE)
+	for i in wins.size():
+		if i == 1 and broken >= 4:
+			continue
+		var dim := 0.5 if i == 0 and broken >= 2 else 1.0
+		Art.glow(ci, wins[i], 45, Art.fade(Data.lantern, (0.3 + 0.25 * n) * dim))
+	if broken < 4:
+		Art.glow(ci, Art.hut_lamp(HUT, HUT_SIZE), 26, Color(1.0, 0.8, 0.45, 0.4 + 0.35 * n))
 	Art.glow(ci, Art.hut_cauldron(HUT, HUT_SIZE), 40, Color(0.5, 1.0, 0.5, 0.2 + 0.2 * n))
 	for l in lanterns:
 		Art.glow(ci, Art.lantern_lamp(l, LANTERN_SIZE), 34, Color(1.0, 0.8, 0.45, 0.4 + 0.35 * n))
@@ -847,6 +1029,8 @@ func _paint_light_over(ci: CanvasItem) -> void:
 				Art.glow(ci, eye, size * 0.26, Color(1, 0.85, 0.35, 0.45 * fade * n))
 		if e["hurt"] > 0.0:
 			Art.glow(ci, pos + Vector2(0, -size * 0.2), size * 0.9, Color(1, 1, 1, e["hurt"] * 1.4))
+		if e["frozen"] and e["flee"] < 0.0:
+			Art.glow(ci, pos + Vector2(0, -size * 0.2), size * 0.8, Color(0.5, 0.8, 1.0, 0.35))
 	if ward > 0:
 		var pts := _ward_points()
 		for k in mini(ward, pts.size()):
@@ -859,6 +1043,8 @@ func _paint_light_over(ci: CanvasItem) -> void:
 		if p["kind"] == "spark" or p["kind"] == "mote":
 			var f: float = p["life"] / p["max"]
 			Art.glow(ci, p["pos"], p["size"] * 3.0, Art.fade(p["color"], f))
+	if roar_t < 1.0:
+		Art.glow(ci, HUT + Vector2(0, -60), 300.0 + roar_t * 500.0, Color(1.0, 0.8, 0.4, 0.35 * (1.0 - roar_t)))
 
 
 func _paint_canopy(ci: CanvasItem) -> void:
@@ -910,21 +1096,31 @@ func _paint_ui(ci: CanvasItem) -> void:
 
 	ci.draw_rect(Rect2(0, BAR_Y, 720, 1280 - BAR_Y), Color("1a1426"))
 	ci.draw_rect(Rect2(0, BAR_Y, 720, 3), Art.fade(Data.magic, 0.4))
-	for i in 4:
-		var id: String = Data.potion_order[i]
+	var lay := _bar_layout()
+	var shown: Array = lay["shown"]
+	if shown.is_empty():
+		ci.draw_string(font, Vector2(0, BAR_Y + 80), "No bottles yet. Brew some during the day!", HORIZONTAL_ALIGNMENT_CENTER,
+			720, 20, Color(1, 1, 1, 0.5))
+	for i in shown.size():
+		var id: String = shown[i]
 		var info: Dictionary = Data.potions[id]
 		var n: int = Data.bottles[id]
-		var known: bool = Data.discovered.has(id)
-		var cell := Rect2(CELL_W * i + 8, BAR_Y + 10, CELL_W - 16, 130)
+		var cell := Rect2(lay["x0"] + CELL_W * i + 5, BAR_Y + 10, CELL_W - 10, 130)
 		(cell_selected_box if selected == id else cell_box).draw(rid, cell)
-		Art.bottle(ci, Vector2(cell.get_center().x, BAR_Y + 64), 68, info["color"] if known else Color("6d6878"),
-			1.0 if n > 0 else 0.35)
-		var badge := Vector2(cell.end.x - 24, BAR_Y + 32)
-		ci.draw_circle(badge, 16, Data.magic if n > 0 else Color(1, 1, 1, 0.12), true, -1.0, true)
-		ci.draw_string(font, badge + Vector2(-16, 7), str(n), HORIZONTAL_ALIGNMENT_CENTER, 32, 20,
-			Data.ink if n > 0 else Color(1, 1, 1, 0.4))
-		ci.draw_string(font, Vector2(cell.position.x, BAR_Y + 128), info["name"] if known else "???",
-			HORIZONTAL_ALIGNMENT_CENTER, cell.size.x, 19, Data.parchment if n > 0 else Color(1, 1, 1, 0.45))
+		Art.bottle(ci, Vector2(cell.get_center().x, BAR_Y + 64), 58, info["color"])
+		var badge := Vector2(cell.end.x - 18, BAR_Y + 28)
+		ci.draw_circle(badge, 14, Data.magic, true, -1.0, true)
+		ci.draw_string(font, badge + Vector2(-14, 6), str(n), HORIZONTAL_ALIGNMENT_CENTER, 28, 17, Data.ink)
+		ci.draw_string(font, Vector2(cell.position.x, BAR_Y + 126), info["name"], HORIZONTAL_ALIGNMENT_CENTER, cell.size.x, 15,
+			Data.parchment)
+	if lay["paged"]:
+		for side in [0, 1]:
+			var r := Rect2(6 if side == 0 else 666, BAR_Y + 40, 48, 70)
+			cell_box.draw(rid, r)
+			ci.draw_string(font, r.position + Vector2(0, 46), "<" if side == 0 else ">", HORIZONTAL_ALIGNMENT_CENTER, r.size.x, 26,
+				Data.parchment)
+		ci.draw_string(font, Vector2(0, BAR_Y + 146), "%d/%d" % [bar_page + 1, lay["pages"]], HORIZONTAL_ALIGNMENT_CENTER, 720, 13,
+			Color(1, 1, 1, 0.5))
 
 
 ## Banner that introduces a creature type the first time it appears.

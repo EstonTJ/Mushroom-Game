@@ -78,7 +78,7 @@ func _start_day() -> void:
 	var forage := Forage.new()
 	forage.finished.connect(_start_brew)
 	_set_phase("forage", forage, "Day %d · Forage" % Data.day,
-		"Tap ingredients before they fade. Moonglow is rare!", "Done", _start_brew)
+		"Tap mushrooms before they fade. Tap rocks and stumps to search!", "Done", _start_brew)
 
 
 func _start_brew() -> void:
@@ -110,8 +110,8 @@ func _on_night_over(won: bool, repelled: int) -> void:
 	phase = "result"
 	if not won:
 		_set_text("The hut was overrun", "Try the day again with a new plan.", "Retry day", _retry_day)
-	elif Data.day >= Data.nights.size():
-		_set_text("The hut is safe!", "You survived all %d nights. Well brewed." % Data.nights.size(),
+	elif Data.day >= Data.NIGHTS:
+		_set_text("The hut is safe!", "You survived all %d nights. Well brewed." % Data.NIGHTS,
 			"Play again", _new_game)
 	else:
 		_set_text("Dawn · hut is safe", "Repelled %d creatures. Unused bottles carry over." % repelled,
