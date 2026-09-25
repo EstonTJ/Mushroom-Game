@@ -22,6 +22,9 @@ func _ready() -> void:
 	var main = load("res://main.tscn").instantiate()
 	add_child(main)
 	await frames(2)
+	while main.phase == "unlock":
+		main._on_action()
+		await frames(2)
 	var night := 1
 	var days_played := 0
 	while night <= Data.NIGHTS and days_played < 80:
@@ -115,5 +118,8 @@ func _ready() -> void:
 				Data.bottles[id] += 3 if Data.potion_night(id) <= night else 0
 		else:
 			night += 1
+		while main.phase == "unlock":
+			main._on_action()
+			await frames(2)
 	print("FUZZ DONE after %d days, reached night %d" % [days_played, night])
 	get_tree().quit()

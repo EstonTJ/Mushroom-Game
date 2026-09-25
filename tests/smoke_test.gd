@@ -75,7 +75,13 @@ func _ready() -> void:
 	var main = load("res://main.tscn").instantiate()
 	add_child(main)
 	await frames(3)
-	check(main.phase == "forage", "starts on forage")
+	check(main.phase == "unlock" and main.phase_node.ids.size() == 3, "a new game opens on the unlock screen with 3 mushrooms")
+	main._on_action()
+	main._on_action()
+	check(main.phase == "unlock" and not main.phase_node.has_next(), "Next steps through the mushroom cards")
+	main._on_action()
+	await frames(2)
+	check(main.phase == "forage" and Data.unlock_seen == 1, "Start day goes to the forest")
 	var forage = main.phase_node
 	var only_unlocked := true
 	for it in forage.items:
@@ -160,7 +166,18 @@ func _ready() -> void:
 	if main.phase == "result" and def.hut_hp > 0:
 		main._on_action()
 		await frames(2)
-		check(Data.day == 2 and main.phase == "forage", "next day begins")
+		check(Data.day == 2 and main.phase == "unlock" and main.phase_node.current() == "ghost_fungus",
+			"after the night, day 2 opens on the Ghost Fungus unlock screen")
+		check(main.phase_node.new_brews() == ["ward"], "the unlock screen teases the new brew it makes possible")
+		var reloaded := Data.load_game()
+		check(reloaded and Data.day == 2 and Data.unlock_seen == 1, "the won night is saved before the unlock screen")
+		main._on_action()
+		await frames(2)
+		check(main.phase == "forage" and Data.unlock_seen == 2, "then the forest")
+		Data.day = 4
+		main._begin_day()
+		await frames(1)
+		check(main.phase == "forage", "a day with no new mushroom goes straight to the forest")
 	main.queue_free()
 	await frames(1)
 

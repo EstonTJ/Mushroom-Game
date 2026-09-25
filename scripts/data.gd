@@ -134,6 +134,8 @@ var inventory := {}
 var bottles := {}
 var discovered := {}
 var seen_creatures := {}
+## The last day whose "new mushroom" screen has been shown.
+var unlock_seen := 0
 var _snapshot := {}
 
 
@@ -143,6 +145,7 @@ func reset_game() -> void:
 	bottles.clear()
 	discovered.clear()
 	seen_creatures.clear()
+	unlock_seen = 0
 	for id in ingredient_order:
 		inventory[id] = 0
 	for id in potion_order:
@@ -160,7 +163,7 @@ func save_game() -> void:
 	if f == null:
 		return
 	f.store_string(JSON.stringify({"version": SAVE_VERSION, "day": day, "inventory": inventory, "bottles": bottles,
-		"discovered": discovered, "seen_creatures": seen_creatures}))
+		"discovered": discovered, "seen_creatures": seen_creatures, "unlock_seen": unlock_seen}))
 	f.close()
 
 
@@ -175,6 +178,7 @@ func load_game() -> bool:
 		return false
 	reset_game()
 	day = clampi(int(data.get("day", 1)), 1, NIGHTS)
+	unlock_seen = int(data.get("unlock_seen", 0))
 	for id in ingredient_order:
 		inventory[id] = int(data.get("inventory", {}).get(id, 0))
 	for id in potion_order:

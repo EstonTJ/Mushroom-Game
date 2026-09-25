@@ -19,8 +19,6 @@ const BASKET_Y := 1110.0
 const FLY_TIME := 0.5
 const TRAIL := [Vector2(300, 100), Vector2(430, 380), Vector2(270, 700), Vector2(420, 1000), Vector2(340, 1140)]
 const STREAM := [Vector2(-30, 800), Vector2(190, 730), Vector2(430, 780), Vector2(750, 690)]
-const BANNER_TIME := 6.0
-const SAFETY := "Real wild mushrooms can be deadly. Never eat one you find."
 
 
 ## One drawing layer. It calls back into this script so all drawing stays here.
@@ -41,7 +39,6 @@ var particles := []
 var butterflies := []
 var rare_spawned := false
 var obstacles := []
-var banner := {}
 var done := false
 var t := 0.0
 var leaf_timer := 0.0
@@ -75,7 +72,6 @@ var ui_layer: Layer
 var track_box: StyleBoxFlat
 var basket_box: StyleBoxFlat
 var fill_box: StyleBoxFlat
-var banner_box: StyleBoxFlat
 
 
 func _ready() -> void:
@@ -102,7 +98,6 @@ func _ready() -> void:
 	canopy_layer = _add_layer(_paint_canopy, false)
 	ui_layer = _add_layer(_paint_ui, false)
 	_place_obstacles()
-	_make_banner()
 	for i in 3:
 		_spawn()
 
@@ -258,18 +253,6 @@ func _pick_hidden() -> String:
 	return ids[-1]
 
 
-func _make_banner() -> void:
-	var fresh := Data.new_mushrooms(Data.day)
-	if fresh.is_empty():
-		return
-	if Data.day == 1:
-		banner = {"title": "Today's mushrooms", "ids": fresh, "line": "Tap them before they fade. Tap rocks and stumps to look underneath!"}
-	else:
-		var info: Dictionary = Data.ingredients[fresh[0]]
-		banner = {"title": "New mushroom: " + info["name"], "ids": fresh, "latin": info["latin"], "line": info["fact"]}
-	banner["t"] = 0.0
-
-
 func _tree(center: Vector2, rng: RandomNumberGenerator) -> Dictionary:
 	var blobs := []
 	for k in rng.randi_range(4, 5):
@@ -298,10 +281,6 @@ func _process(delta: float) -> void:
 		bounce[k] = maxf(0.0, bounce[k] - delta)
 	for o in obstacles:
 		o["shake"] = maxf(0.0, o["shake"] - delta)
-	if not banner.is_empty():
-		banner["t"] += delta
-		if banner["t"] > BANNER_TIME:
-			banner = {}
 
 	var kept := []
 	for it in items:
@@ -671,6 +650,8 @@ func _paint_objects(ci: CanvasItem) -> void:
 			a = 0.35 + 0.65 * absf(sin(remaining * 12.0))
 		var pop := minf(1.0, age * 5.0)
 		var grow := pop + 0.25 * sin(pop * PI) - (0.15 * (1.0 - remaining) if remaining < 1.0 else 0.0)
+		if grow < 0.05:
+			continue
 		var bob := sin(age * 3.0) * 4.0
 		var pos: Vector2 = it["pos"]
 		Art.shadow(ci, pos + Vector2(0, 26), 30 * grow, 8 * grow, a)
@@ -872,33 +853,3 @@ func _paint_ui(ci: CanvasItem) -> void:
 		var at: Vector2 = p["pos"] + Vector2(-110, -60 - pt * 50)
 		ci.draw_string_outline(font, at, p["text"], HORIZONTAL_ALIGNMENT_CENTER, 220, 26, 6, Color(0, 0, 0, 0.55 * (1.0 - pt)))
 		ci.draw_string(font, at, p["text"], HORIZONTAL_ALIGNMENT_CENTER, 220, 26, Art.fade(Data.parchment, 1.0 - pt))
-
-	if not banner.is_empty():
-		_paint_banner(ci, rid, font)
-
-
-## Introduces the day's new mushroom (or the first three) with a real fact and
-## a reminder never to eat wild mushrooms.
-func _paint_banner(ci: CanvasItem, rid: RID, font: Font) -> void:
-	var bt: float = banner["t"]
-	var a := clampf(minf(bt * 4.0, (BANNER_TIME - bt) * 2.0), 0.0, 1.0)
-	var box := Rect2(24, 158 - (1.0 - a) * 20.0, 672, 176)
-	if banner_box == null:
-		banner_box = basket_box.duplicate() as StyleBoxFlat
-	var style := banner_box
-	style.bg_color = Color(0.12, 0.1, 0.06, 0.86 * a)
-	style.border_color = Color(0.95, 0.85, 0.55, 0.7 * a)
-	style.draw(rid, box)
-	var ids: Array = banner["ids"]
-	for i in ids.size():
-		Art.ingredient(ci, ids[i], box.position + Vector2(62 + i * 58 - (ids.size() - 1) * 18, 96), 72.0 if ids.size() == 1 else 48.0, a)
-	var tx := box.position.x + (140.0 if ids.size() == 1 else 190.0)
-	var w := box.end.x - tx - 16.0
-	ci.draw_string(font, Vector2(tx, box.position.y + 40), banner["title"], HORIZONTAL_ALIGNMENT_LEFT, w, 24, Color(1, 0.9, 0.6, a))
-	var y := box.position.y + 64.0
-	if banner.has("latin"):
-		ci.draw_string(font, Vector2(tx, y), banner["latin"], HORIZONTAL_ALIGNMENT_LEFT, w, 15, Color(1, 1, 1, 0.6 * a))
-		y += 24.0
-	ci.draw_multiline_string(font, Vector2(tx, y), banner["line"], HORIZONTAL_ALIGNMENT_LEFT, w, 17, 3, Color(1, 1, 1, 0.92 * a))
-	ci.draw_string(font, Vector2(box.position.x + 16, box.end.y - 14), SAFETY, HORIZONTAL_ALIGNMENT_LEFT, box.size.x - 32, 14,
-		Color(1.0, 0.65, 0.55, a))

@@ -5,6 +5,7 @@ extends Node2D
 const Forage = preload("res://scripts/forage.gd")
 const Brew = preload("res://scripts/brew.gd")
 const Defense = preload("res://scripts/defense.gd")
+const Unlock = preload("res://scripts/unlock.gd")
 
 var phase := ""
 var phase_node = null
@@ -18,7 +19,7 @@ func _ready() -> void:
 	_build_hud()
 	if not Data.load_game():
 		Data.reset_game()
-	_start_day()
+	_begin_day()
 
 
 func _build_hud() -> void:
@@ -74,6 +75,33 @@ func _set_text(t: String, h: String, button_text: String, on_action: Callable) -
 	action = on_action
 
 
+## A new day: first the dawn "new mushroom" screen if this day brings one
+## that hasn't been shown yet, then the forest.
+func _begin_day() -> void:
+	if Data.unlock_seen < Data.day and not Data.new_mushrooms(Data.day).is_empty():
+		_start_unlock()
+	else:
+		_start_day()
+
+
+func _start_unlock() -> void:
+	var node := Unlock.new()
+	node.ids = Data.new_mushrooms(Data.day)
+	var hint := "Three mushrooms grow in the forest." if Data.day == 1 else "Something new grows in the forest."
+	_set_phase("unlock", node, "Day %d · Dawn" % Data.day, hint, "Next" if node.has_next() else "Start day", _on_unlock_continue)
+
+
+func _on_unlock_continue() -> void:
+	if phase != "unlock":
+		return
+	if phase_node.has_next():
+		phase_node.next()
+		action_btn.text = "Next" if phase_node.has_next() else "Start day"
+		return
+	Data.unlock_seen = Data.day
+	_start_day()
+
+
 func _start_day() -> void:
 	Data.take_snapshot()
 	Data.save_game()
@@ -127,9 +155,10 @@ func _retry_day() -> void:
 
 func _next_day() -> void:
 	Data.day += 1
-	_start_day()
+	Data.save_game()
+	_begin_day()
 
 
 func _new_game() -> void:
 	Data.reset_game()
-	_start_day()
+	_begin_day()

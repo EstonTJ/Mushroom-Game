@@ -27,6 +27,11 @@ func _ready() -> void:
 	# Day 1 forest: the first three mushrooms, rocks and stumps, the intro banner.
 	var main = load("res://main.tscn").instantiate()
 	add_child(main)
+	await frames(50)
+	await shot("0_unlock_day1")
+	while main.phase == "unlock":
+		main._on_action()
+		await frames(2)
 	await frames(40)
 	var fg = main.phase_node
 	var picked: Dictionary = fg.items[0]
@@ -104,8 +109,19 @@ func _ready() -> void:
 		await frames(3)
 		await shot("6_hut_%d" % b)
 
-	# Late game forest (night 33): all 15 mushrooms in the basket, a new-mushroom banner.
+	# A mid-game unlock screen: Scarlet Elf Cup on night 6 (Frost becomes possible).
 	main.queue_free()
+	await frames(2)
+	Data.day = 6
+	var Unlock = load("res://scripts/unlock.gd")
+	var un = Unlock.new()
+	un.ids = Data.new_mushrooms(6)
+	add_child(un)
+	await frames(60)
+	await shot("7_unlock_night6")
+	un.queue_free()
+
+	# Late game forest (night 33): all 15 mushrooms in the basket.
 	await frames(2)
 	Data.day = 33
 	var late = Forage.new()

@@ -48,12 +48,16 @@ static func glow(ci: CanvasItem, pos: Vector2, r: float, color: Color) -> void:
 
 
 static func shadow(ci: CanvasItem, pos: Vector2, rx: float, ry: float, a: float = 1.0) -> void:
+	if rx < 0.5 or ry < 0.5:
+		return
 	ci.draw_colored_polygon(ellipse(pos, rx, ry, 20), Color(0, 0, 0, 0.28 * a))
 
 
 ## Draws a mushroom ingredient by id (a key of Data.ingredients). pos is the
 ## ground point (stem base sits just below it); s is the overall size.
 static func ingredient(ci: CanvasItem, id: String, pos: Vector2, s: float, a: float = 1.0) -> void:
+	if s < 2.0 or a <= 0.0:
+		return
 	match id:
 		"puffball":
 			_puffball(ci, pos, s, a)
@@ -382,6 +386,8 @@ static func mushroom(ci: CanvasItem, pos: Vector2, s: float, cap: Color, a: floa
 
 ## Round flask with a cork, liquid up to a fill line, bubbles and a glass shine.
 static func bottle(ci: CanvasItem, pos: Vector2, s: float, color: Color, a: float = 1.0) -> void:
+	if s < 2.0 or a <= 0.0:
+		return
 	var ink := fade(INK, 0.7 * a)
 	var line_w := maxf(1.2, s * 0.035)
 	var glass := fade(Color(0.82, 0.92, 0.95, 0.35), a)
@@ -417,6 +423,8 @@ static func bottle(ci: CanvasItem, pos: Vector2, s: float, color: Color, a: floa
 ## stands; s is its size. t drives walk cycles and flapping (pass the same t
 ## every frame for smooth animation).
 static func creature(ci: CanvasItem, kind: String, pos: Vector2, s: float, a: float = 1.0, t: float = 0.0, blink: bool = false) -> void:
+	if s < 2.0 or a <= 0.0:
+		return
 	match kind:
 		"scuttler":
 			_scuttler(ci, pos, s, a, t, blink)
