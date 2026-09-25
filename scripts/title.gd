@@ -11,6 +11,7 @@ signal market_pressed
 
 const Art = preload("res://scripts/art.gd")
 const Baked = preload("res://scripts/baked.gd")
+const Logo = preload("res://scripts/title_logo.gd")
 
 ## The first button (Continue, or New game on a fresh start) is the big one;
 ## the rest sit two to a row beneath it.
@@ -24,7 +25,6 @@ const NO := Rect2(380, 760, 220, 84)
 ## Where the hut stands, and how big it is.
 const HUT_POS := Vector2(360, 830)
 const HUT_SIZE := 245.0
-const MOON := Vector2(360, 236)
 
 ## Set by main.gd before adding: whether a save exists, its day and screen,
 ## the furthest night, and a note about how the last session ended.
@@ -38,6 +38,9 @@ var t := 0.0
 var stars := []
 var fireflies := []
 var scene: Baked
+## The pixel-lettered title, painted once and bobbed gently as a whole.
+var logo: Baked
+var moon := Logo.moon_center()
 
 
 func _ready() -> void:
@@ -52,6 +55,8 @@ func _ready() -> void:
 	# Children draw over their parent; the backdrop has to sit behind the title.
 	scene.z_index = -1
 	add_child(scene)
+	logo = Baked.new(Logo.paint, Vector2i(720, 400))
+	add_child(logo)
 
 
 ## The buttons on the title, top to bottom.
@@ -126,12 +131,8 @@ func _paint_scene(ci: CanvasItem) -> void:
 		PackedColorArray([top, top, mid, mid]))
 	ci.draw_polygon(PackedVector2Array([Vector2(0, 760), Vector2(720, 760), Vector2(720, 1280), Vector2(0, 1280)]),
 		PackedColorArray([mid, mid, low, low]))
-	# The moon sits behind the title, softened so the lettering stays on top.
-	Art.glow(ci, MOON, 330, Color(1.0, 0.92, 0.75, 0.22))
-	ci.draw_circle(MOON, 168, Color(0.99, 0.93, 0.78, 0.16))
-	ci.draw_circle(MOON, 150, Color(0.99, 0.94, 0.8, 0.2))
-	for c in [[Vector2(-70, -60), 26.0], [Vector2(60, 50), 20.0], [Vector2(80, -70), 12.0], [Vector2(-40, 80), 14.0]]:
-		ci.draw_circle(MOON + c[0], c[1], Color(0.75, 0.68, 0.58, 0.14))
+	# Moonlight spilling from the moon in the title.
+	Art.glow(ci, moon, 420, Color(1.0, 0.92, 0.75, 0.16))
 	var hills := [[Color("221f40"), 670.0, 0.0], [Color("1a282c"), 730.0, 1.7]]
 	for h in hills:
 		var pts := PackedVector2Array([Vector2(0, 1280)])
@@ -184,17 +185,10 @@ func _notched(r: Rect2, c: Color, n: float) -> void:
 	draw_rect(Rect2(r.position.x + n / 2.0, r.position.y + n / 2.0, r.size.x - n, r.size.y - n), c)
 
 
-## Title lettering: a hard drop shadow, a thick dark outline, then the fill.
-func _title_word(font: Font, y: float, text: String, size: int, fill: Color) -> void:
-	draw_string(font, Vector2(0, y + 8), text, HORIZONTAL_ALIGNMENT_CENTER, 720, size, Color(0.07, 0.03, 0.12, 0.7))
-	draw_string_outline(font, Vector2(0, y), text, HORIZONTAL_ALIGNMENT_CENTER, 720, size, 16, Color("2a1630"))
-	draw_string(font, Vector2(0, y), text, HORIZONTAL_ALIGNMENT_CENTER, 720, size, fill)
-
-
 func _draw() -> void:
 	var font := ThemeDB.fallback_font
 	for s in stars:
-		if s["pos"].distance_to(MOON) < 175.0:
+		if s["pos"].distance_to(moon) < 90.0 or (s["pos"].y > 40 and s["pos"].y < 350 and absf(s["pos"].x - 360) < 330):
 			continue
 		var tw := 0.35 + 0.65 * absf(sin(t * 1.3 + s["ph"]))
 		draw_circle(s["pos"], s["r"], Color(1, 1, 0.9, 0.8 * tw))
@@ -210,14 +204,19 @@ func _draw() -> void:
 		var blink := 0.5 + 0.5 * sin(t * 3.0 + f["ph"])
 		Art.glow(self, pos, 14, Color(0.8, 1.0, 0.5, 0.45 * blink))
 
-	var bob := sin(t * 1.2) * 3.0
-	_title_word(font, 196 + bob, "Mushroom", 96, Color("f5e6c0"))
-	_title_word(font, 306 + bob, "Moon", 118, Color("ffd27a"))
+	logo.position.y = round(sin(t * 1.2) * 3.0)
+	# A few spores drift up past the title.
+	for k in 4:
+		var life := fposmod(t * 0.12 + k * 0.25, 1.0)
+		var sx: float = [150.0, 610.0, 96.0, 560.0][k] + sin(t * 0.8 + k * 2.0) * 10.0
+		var sy := 330.0 - life * 260.0
+		var a := sin(life * PI) * 0.8
+		draw_rect(Rect2(round(sx), round(sy), 6, 6), Color(0.85, 1.0, 0.75, a))
 
 	# Subtitle on a dark ribbon so it reads over the moonlit sky.
-	var ribbon := Rect2(36, 352, 648, 46)
+	var ribbon := Rect2(36, 372, 648, 46)
 	_frame(ribbon, Color(0.1, 0.07, 0.16, 0.82), Color(0.36, 0.28, 0.45, 0.9), Color(1, 1, 1, 0.06), Color(0, 0, 0, 0.2), 6.0, false)
-	draw_string(font, Vector2(0, 383), "Forage by day  ·  Brew your defenses  ·  Protect the hut by night", HORIZONTAL_ALIGNMENT_CENTER,
+	draw_string(font, Vector2(0, 403), "Forage by day  ·  Brew your defenses  ·  Protect the hut by night", HORIZONTAL_ALIGNMENT_CENTER,
 		720, 20, Color("e8f2dc"))
 
 	if page == "confirm":
