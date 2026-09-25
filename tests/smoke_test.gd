@@ -75,18 +75,36 @@ func _ready() -> void:
 	main._on_action()
 	await frames(2)
 	check(main.phase == "night", "night starts")
+	# Placing during the night: an empty spot takes the bottle as a trap...
+	def.selected = "syrup"
+	def._night_tap(def.slots[4]["pos"])
+	check(def.slots[4]["trap"] == "syrup" and Data.bottles["syrup"] == 0, "night: place a trap on an empty spot")
+	# ...a spot still holding an unburst trap ignores the tap (no accidental throw).
 	def.selected = "ember"
+	def._night_tap(def.slots[1]["pos"])
+	check(def.slots[1]["trap"] == "spore" and Data.bottles["ember"] == 1 and def.areas.is_empty(),
+		"night: tapping an occupied spot does nothing")
 	var thrown := false
+	var reused := false
 	var steps := 0
 	while not def.over and steps < 5000:
 		def._night_step(0.05)
 		if not thrown and def.enemies.size() > 0 and def.enemies[0]["offset"] > 100.0:
 			def._night_tap(def.enemies[0]["pos"])
 			thrown = true
+		# ...and a spot whose trap already burst can take a new one.
+		if thrown and not reused and def.slots[1]["triggered"]:
+			Data.bottles["spore"] += 1
+			def.selected = "spore"
+			def._night_tap(def.slots[1]["pos"])
+			check(def.slots[1]["trap"] == "spore" and not def.slots[1]["triggered"] and Data.bottles["spore"] == 0,
+				"night: re-arm a spot after its trap burst")
+			reused = true
 		steps += 1
 	await frames(2)
 	check(def.over, "night ends (%d steps, %.0f s of game time)" % [steps, steps * 0.05])
 	check(thrown and Data.bottles["ember"] == 0, "ember thrown")
+	check(reused, "a burst spot was re-armed during the night")
 	print("      night 1 result: phase=%s hut=%d/%d ward=%d repelled=%d/%d" % [main.phase, def.hut_hp,
 		Data.HUT_HP, def.ward, def.repelled, def.cfg["count"]])
 

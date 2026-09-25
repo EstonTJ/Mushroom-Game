@@ -2,7 +2,8 @@ extends Node2D
 ## Fortify and night. One hut, two paths, three trap spots per path.
 ## Fortify: pick a bottle, tap a spot to place it (tap again to take it back),
 ## or tap the hut with a Moon Ward. Night: creatures walk the paths; a placed
-## bottle bursts when one gets close, and saved bottles can be thrown anywhere.
+## bottle bursts when one gets close. Saved bottles can still be placed on a free
+## spot (including one whose trap already burst) or thrown anywhere else.
 
 signal night_over(won: bool, repelled: int)
 
@@ -225,9 +226,23 @@ func _night_tap(p: Vector2) -> void:
 	if selected == "ward":
 		ward += Data.potions["ward"]["ward"]
 		_popup("Ward +%d" % Data.potions["ward"]["ward"], HUT + Vector2(0, -170), Data.magic)
-	else:
-		_spawn_area(selected, p)
+		_use_selected()
+		return
+	# A free spot (empty, or its trap already burst) takes the bottle as a new trap.
+	# A spot still holding an unburst trap ignores the tap, so it can't be thrown by accident.
+	for s in slots:
+		if s["pos"].distance_to(p) < 50.0:
+			if _slot_free(s):
+				s["trap"] = selected
+				s["triggered"] = false
+				_use_selected()
+			return
+	_spawn_area(selected, p)
 	_use_selected()
+
+
+func _slot_free(s: Dictionary) -> bool:
+	return s["trap"] == "" or s["triggered"]
 
 
 func _draw() -> void:
@@ -254,11 +269,11 @@ func _draw() -> void:
 		draw_arc(HUT + Vector2(0, -60), 135, 0, TAU, 64, Art.fade(Data.magic, pulse), 6)
 
 	for s in slots:
-		if s["trap"] != "" and not s["triggered"]:
+		if not _slot_free(s):
 			Art.bottle(self, s["pos"], 56, Data.potions[s["trap"]]["color"])
-		elif not night:
+		else:
 			var glow := 0.5 + 0.3 * sin(t * 3.0)
-			draw_arc(s["pos"], 36, 0, TAU, 40, Art.fade(Data.magic, glow), 4)
+			draw_arc(s["pos"], 36, 0, TAU, 40, Art.fade(Data.magic, glow * (0.6 if night else 1.0)), 4)
 
 	for a in areas:
 		var col: Color = Data.potions[a["id"]]["color"]

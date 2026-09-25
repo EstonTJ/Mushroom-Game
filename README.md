@@ -24,7 +24,7 @@ A mouse click stands in for a finger tap.
 | Forage (20 s) | Tap ingredients before they fade. One rare Moonglow shows up per walk and fades fast. |
 | Brew | Drag two ingredients into the cauldron, then circle your finger around it 3 times. Known pairs make a bottle; anything else is sludge. |
 | Fortify | Tap a bottle, then a glowing spot on a path. It bursts when a creature gets close. Moon Ward goes on the hut. Tap a placed bottle to take it back. |
-| Night | Creatures walk both paths. Tap a bottle, then tap anywhere to throw it. |
+| Night | Creatures walk both paths. Tap a bottle, then a glowing spot to place it as a trap (spots free up again once their trap bursts), or tap anywhere else to throw it. |
 
 Unused bottles carry over to the next day. Losing a night restarts that day
 with the ingredients and bottles you had that morning; discovered recipes stay.

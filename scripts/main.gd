@@ -103,7 +103,7 @@ func _start_night() -> void:
 		return
 	phase = "night"
 	phase_node.start_night()
-	_set_text("Night %d" % Data.day, "Tap a bottle, then tap the path to throw it.", "", Callable())
+	_set_text("Night %d" % Data.day, "Tap a bottle, then a glowing spot to place it, or anywhere to throw.", "", Callable())
 
 
 func _on_night_over(won: bool, repelled: int) -> void:
