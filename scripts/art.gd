@@ -294,3 +294,20 @@ static func heart(ci: CanvasItem, pos: Vector2, s: float, color: Color) -> void:
 	ci.draw_circle(pos + Vector2(s * 0.25, -s * 0.1), s * 0.28, color)
 	ci.draw_colored_polygon(PackedVector2Array([pos + Vector2(-s * 0.52, 0.0), pos + Vector2(s * 0.52, 0.0),
 		pos + Vector2(0, s * 0.52)]), color)
+
+
+## Four-point twinkle star.
+static func sparkle(ci: CanvasItem, pos: Vector2, s: float, color: Color) -> void:
+	var k := s * 0.25
+	ci.draw_colored_polygon(PackedVector2Array([pos + Vector2(0, -s), pos + Vector2(k, -k), pos + Vector2(s, 0),
+		pos + Vector2(k, k), pos + Vector2(0, s), pos + Vector2(-k, k), pos + Vector2(-s, 0), pos + Vector2(-k, -k)]), color)
+
+
+## Small leaf, rotated by ang. Used for leaf litter and falling leaves.
+static func leaf(ci: CanvasItem, pos: Vector2, s: float, ang: float, color: Color) -> void:
+	var pts := PackedVector2Array()
+	for p in [Vector2(0, -s), Vector2(s * 0.45, -s * 0.2), Vector2(s * 0.3, s * 0.5), Vector2(0, s * 0.7),
+			Vector2(-s * 0.3, s * 0.5), Vector2(-s * 0.45, -s * 0.2)]:
+		pts.append(pos + p.rotated(ang))
+	ci.draw_colored_polygon(pts, color)
+	ci.draw_line(pos + Vector2(0, -s * 0.8).rotated(ang), pos + Vector2(0, s * 0.9).rotated(ang), color.darkened(0.3), 1.2, true)

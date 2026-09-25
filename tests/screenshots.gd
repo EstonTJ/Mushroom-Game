@@ -24,6 +24,15 @@ func _ready() -> void:
 	var main = load("res://main.tscn").instantiate()
 	add_child(main)
 	await frames(40)
+	# Make sure a Moonglow is showing, and catch one pickup mid-flight to the basket.
+	var fg = main.phase_node
+	fg.items.append({"id": "moonglow", "pos": Vector2(470, 640), "age": 0.5, "life": 3.0, "ph": 0.0})
+	var picked: Dictionary = fg.items[0]
+	Data.inventory[picked["id"]] += 1
+	fg.flyers.append({"id": picked["id"], "from": picked["pos"], "t": 0.0})
+	fg.popups.append({"text": "+1 " + Data.ingredients[picked["id"]]["name"], "pos": picked["pos"], "t": 0.0, "color": Color.WHITE})
+	fg.items.remove_at(0)
+	await frames(12)
 	await shot("1_forage")
 
 	main.phase_node.time_left = 0.0
