@@ -18,6 +18,7 @@ var action := Callable()
 var guide_btn: Button
 var guide
 var diag_timer := 0.0
+var fps_label: Label
 
 
 func _ready() -> void:
@@ -26,6 +27,23 @@ func _ready() -> void:
 		Engine.max_fps = 60
 	_build_hud()
 	var last := Data.take_last_diag()
+	var event := Data.take_last_event()
+	# Playtesting shortcut: ?day=N in the web address starts a fresh run on
+	# day N with 5 of every potion that can be brewed by then.
+	var jump := _url_day()
+	if jump > 0:
+		Data.reset_game()
+		Data.day = jump
+		Data.unlock_seen = jump
+		for id in Data.potion_order:
+			if Data.potion_night(id) <= jump:
+				Data.bottles[id] = 5
+				Data.discovered[id] = true
+		for id in Data.unlocked_mushrooms():
+			Data.inventory[id] = 3
+		_start_day()
+		hint.text = "Playtest: started on day %d with 5 of each potion." % jump
+		return
 	if not Data.load_game():
 		Data.reset_game()
 		_begin_day()
@@ -41,14 +59,34 @@ func _ready() -> void:
 		_:
 			_begin_day()
 	var note := "Welcome back! Resumed day %d." % Data.day
-	if not last.is_empty():
-		note = "Resumed day %d. Last session stopped on day %d, %s (%d fps)." % [Data.day, int(last.get("day", 0)),
-			str(last.get("phase", "?")), int(last.get("fps", 0))]
+	var closed_normally: bool = str(event.get("kind", "")) == "page closed"
+	if not last.is_empty() and not closed_normally:
+		note = "Resumed. Last stop: day %d, %s, %d fps" % [int(last.get("day", 0)), str(last.get("phase", "?")), int(last.get("fps", 0))]
+		if not event.is_empty():
+			note += ", " + str(event.get("kind", ""))
+		note += "."
 	hint.text = note
+
+
+func _url_day() -> int:
+	if not OS.has_feature("web"):
+		return 0
+	var search := str(JavaScriptBridge.eval("location.search"))
+	var at := search.find("day=")
+	if at < 0:
+		return 0
+	var digits := ""
+	for ch in search.substr(at + 4):
+		if not ch.is_valid_int():
+			break
+		digits += ch
+	return clampi(digits.to_int(), 0, Data.NIGHTS)
 
 
 ## Every 2 seconds, note where the game is (browser only) for crash reports.
 func _process(delta: float) -> void:
+	if fps_label:
+		fps_label.text = "%d fps" % Engine.get_frames_per_second()
 	diag_timer -= delta
 	if diag_timer <= 0.0:
 		diag_timer = 2.0
@@ -93,6 +131,16 @@ func _build_hud() -> void:
 	guide_btn.pressed.connect(open_guide)
 	layer.add_child(guide_btn)
 
+	# Frame counter for performance checks: add ?fps to the web address.
+	if OS.has_feature("web") and str(JavaScriptBridge.eval("location.search")).contains("fps"):
+		fps_label = Label.new()
+		fps_label.position = Vector2(8, 1240)
+		fps_label.add_theme_font_size_override("font_size", 22)
+		fps_label.add_theme_color_override("font_color", Color.YELLOW)
+		fps_label.add_theme_color_override("font_outline_color", Color.BLACK)
+		fps_label.add_theme_constant_override("outline_size", 6)
+		layer.add_child(fps_label)
+
 	var guide_layer := CanvasLayer.new()
 	guide_layer.layer = 20
 	guide_layer.process_mode = Node.PROCESS_MODE_ALWAYS
@@ -120,6 +168,7 @@ func _on_action() -> void:
 
 func _set_phase(new_phase: String, node: Node2D, t: String, h: String, button_text: String, on_action: Callable) -> void:
 	phase = new_phase
+	Data.write_diag(new_phase + " (starting)")
 	if phase_node:
 		phase_node.queue_free()
 	phase_node = node
@@ -202,6 +251,7 @@ func _start_night() -> void:
 	if phase != "fortify":
 		return
 	phase = "night"
+	Data.write_diag("night (starting)")
 	phase_node.start_night()
 	_set_text("Night %d" % Data.day, "Tap a bottle, then a glowing spot to place it, or anywhere to throw.", "", Callable())
 

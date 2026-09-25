@@ -12,6 +12,7 @@ extends Node2D
 signal night_over(won: bool, repelled: int)
 
 const Art = preload("res://scripts/art.gd")
+const Baked = preload("res://scripts/baked.gd")
 
 const HUT := Vector2(360, 1000)
 const HUT_SIZE := 185.0
@@ -31,9 +32,13 @@ const RIGHT_PATH := [Vector2(680, 120), Vector2(540, 320), Vector2(630, 560), Ve
 ## One drawing layer. It calls back into this script so all drawing stays here.
 class Layer extends Node2D:
 	var painter: Callable
+	## How long the last redraw took, for performance checks.
+	var last_usec := 0
 
 	func _draw() -> void:
+		var start := Time.get_ticks_usec()
 		painter.call(self)
+		last_usec = Time.get_ticks_usec() - start
 
 
 var curves: Array[Curve2D] = []
@@ -81,12 +86,17 @@ var clusters := []
 var trees := []
 var reeds := []
 
-var ground_layer: Layer
+var ground_layer: Baked
+var scenery_layer: Baked
+var baked_night := -1.0
+var baked_broken := -1
 var light_under: Layer
 var objects: Layer
 var light_over: Layer
-var canopy_layer: Layer
+var canopy_layer: Baked
 var ui_layer: Layer
+var bar_layer: Baked
+var bar_sig := ""
 var status_box: StyleBoxFlat
 var cell_box: StyleBoxFlat
 var cell_selected_box: StyleBoxFlat
@@ -95,6 +105,11 @@ var intro_box: StyleBoxFlat
 
 func _ready() -> void:
 	cfg = Data.night_config(Data.day)
+	# Warm the sprite cache for tonight's creatures (and the boss).
+	for kind in cfg["waves"]:
+		Sprites.request(kind, Data.creatures[kind]["size"])
+	if cfg.get("boss", "") != "":
+		Sprites.request(cfg["boss"], Data.creatures[cfg["boss"]]["size"])
 	for kind in Data.creature_order:
 		for i in cfg["waves"].get(kind, 0):
 			queue.append(kind)
@@ -113,11 +128,19 @@ func _ready() -> void:
 	cell_box = _box(Color(1, 1, 1, 0.05), Color(1, 1, 1, 0.08), 16)
 	cell_selected_box = _box(Art.fade(Data.magic, 0.22), Data.magic, 16)
 
-	ground_layer = _add_layer(_paint_ground, false)
+	# Scenery that rarely changes is painted once into an image (Baked) and
+	# repainted only as night falls or the hut takes damage.
+	ground_layer = Baked.new(_paint_ground)
+	add_child(ground_layer)
 	light_under = _add_layer(_paint_light_under, true)
+	scenery_layer = Baked.new(_paint_scenery)
+	add_child(scenery_layer)
 	objects = _add_layer(_paint_objects, false)
 	light_over = _add_layer(_paint_light_over, true)
-	canopy_layer = _add_layer(_paint_canopy, false)
+	canopy_layer = Baked.new(_paint_canopy)
+	add_child(canopy_layer)
+	bar_layer = Baked.new(_paint_bar)
+	add_child(bar_layer)
 	ui_layer = _add_layer(_paint_ui, false)
 
 
@@ -299,9 +322,19 @@ func _process(delta: float) -> void:
 			intro = {}
 	if mode == "night" and not over:
 		_night_step(delta)
-	if night_amt != was:
-		ground_layer.queue_redraw()
-		canopy_layer.queue_redraw()
+	# Repaint baked scenery in steps as night falls, and when the hut changes.
+	if absf(night_amt - baked_night) >= 0.1 or (night_amt == 1.0 and baked_night != 1.0):
+		baked_night = night_amt
+		ground_layer.refresh()
+		canopy_layer.refresh()
+		scenery_layer.refresh()
+	elif _broken() != baked_broken:
+		scenery_layer.refresh()
+	baked_broken = _broken()
+	var sig := "%s|%d|%s" % [selected, bar_page, str(_bar_items().map(func(k): return "%s=%d" % [k, Data.bottles[k]]))]
+	if sig != bar_sig:
+		bar_sig = sig
+		bar_layer.refresh()
 	light_under.queue_redraw()
 	objects.queue_redraw()
 	light_over.queue_redraw()
@@ -868,8 +901,20 @@ func _paint_light_under(ci: CanvasItem) -> void:
 		Art.glow(ci, a["pos"], a["radius"] * 1.4, Art.fade(Data.potion_stats(a["id"])["color"], 0.35 * _area_strength(a)))
 	if ward > 0:
 		Art.glow(ci, HUT + Vector2(0, -50), 230, Art.fade(Data.magic, 0.1 + 0.05 * sin(t * 4.0)))
+		var ring := Art.ellipse(HUT + Vector2(0, -50), 178, 140, 64)
+		Art.outline(ci, ring, Art.fade(Data.magic, 0.5 + 0.25 * sin(t * 4.0)), 3.0)
 	if hit_flash > 0.0:
 		Art.glow(ci, HUT + Vector2(0, -60), 230, Color(1, 0.25, 0.2, hit_flash))
+
+
+## Baked: decorative mushrooms, lanterns and the hut (with its damage).
+func _paint_scenery(ci: CanvasItem) -> void:
+	for cl in clusters:
+		for m in cl["shrooms"]:
+			Art.ingredient(ci, cl["kind"], cl["pos"] + m["off"], m["s"])
+	for l in lanterns:
+		Art.lantern(ci, l, LANTERN_SIZE)
+	Art.hut(ci, HUT, HUT_SIZE, 0.0, _broken())
 
 
 func _paint_objects(ci: CanvasItem) -> void:
@@ -882,12 +927,6 @@ func _paint_objects(ci: CanvasItem) -> void:
 	for k in 2:
 		var rr := fmod(t * 12.0 + k * 20.0, 40.0)
 		Art.outline(ci, Art.ellipse(moon, 26 + rr, 12 + rr * 0.45, 32), Color(1, 0.97, 0.85, (1.0 - rr / 40.0) * 0.25), 1.5)
-
-	for cl in clusters:
-		for m in cl["shrooms"]:
-			Art.ingredient(ci, cl["kind"], cl["pos"] + m["off"], m["s"])
-	for l in lanterns:
-		Art.lantern(ci, l, LANTERN_SIZE)
 
 	for i in slots.size():
 		var s: Dictionary = slots[i]
@@ -904,11 +943,6 @@ func _paint_objects(ci: CanvasItem) -> void:
 			_paint_frost(ci, a)
 
 	if ward > 0:
-		var ring := Art.ellipse(HUT + Vector2(0, -50), 178, 140, 64)
-		ci.draw_colored_polygon(ring, Art.fade(Data.magic, 0.06))
-		Art.outline(ci, ring, Art.fade(Data.magic, 0.5 + 0.25 * sin(t * 4.0)), 3.0)
-	Art.hut(ci, HUT, HUT_SIZE, t, _broken())
-	if ward > 0:
 		var pts := _ward_points()
 		for k in pts.size():
 			Art.crystal(ci, pts[k] + Vector2(0, sin(t * 2.0 + k) * 3.0), 34, Data.magic, 1.0 if k < ward else 0.3)
@@ -921,7 +955,10 @@ func _paint_objects(ci: CanvasItem) -> void:
 		var pos := _draw_pos(e)
 		var size: float = _info(e)["size"]
 		var walk: float = (t * 0.35 if e["stuck"] else t) + e["seed"]
-		Art.creature(ci, e["kind"], pos, size, fade, walk, blink)
+		# Cached sprite frames when ready (one quad); vector art otherwise, and
+		# when the eyes are shut (blinking or drowsy).
+		if blink or not Sprites.draw(ci, e["kind"], pos, size, fade, walk):
+			Art.creature(ci, e["kind"], pos, size, fade, walk, blink)
 		var top := pos.y - size * (1.35 if e["kind"] == "moth" else 1.05)
 		if e["flee"] < 0.0 and e["courage"] < e["max"]:
 			var w: float = 40.0 * e["courage"] / e["max"]
@@ -1158,7 +1195,10 @@ func _paint_ui(ci: CanvasItem) -> void:
 		for kind in kinds:
 			var boss: bool = Data.creatures[kind].get("boss", false)
 			var flying: bool = Data.creatures[kind]["flying"]
-			Art.creature(ci, kind, Vector2(x, 160.0 if flying else 150.0), 24.0 if not boss else 30.0, 1.0, t, false)
+			var icon_at := Vector2(x, 160.0 if flying else 150.0)
+			var icon_size := 24.0 if not boss else 30.0
+			if not Sprites.draw(ci, kind, icon_at, icon_size, 1.0, t):
+				Art.creature(ci, kind, icon_at, icon_size, 1.0, t, false)
 			var label := "BOSS" if boss else "%d" % int(cfg["waves"][kind])
 			ci.draw_string(font, Vector2(x + 14, 148), label, HORIZONTAL_ALIGNMENT_LEFT, -1, 16 if boss else 19,
 				Color("ff8a6b") if boss else Data.parchment)
@@ -1197,6 +1237,11 @@ func _paint_ui(ci: CanvasItem) -> void:
 	if not intro.is_empty():
 		_paint_intro(ci, rid, font)
 
+## Baked: the bottle bar. Repainted only when the selection, page or bottle
+## counts change (see _process).
+func _paint_bar(ci: CanvasItem) -> void:
+	var font := ThemeDB.fallback_font
+	var rid := ci.get_canvas_item()
 	ci.draw_rect(Rect2(0, BAR_Y, 720, 1280 - BAR_Y), Color("1a1426"))
 	ci.draw_rect(Rect2(0, BAR_Y, 720, 3), Art.fade(Data.magic, 0.4))
 	var lay := _bar_layout()

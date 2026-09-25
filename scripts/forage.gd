@@ -11,6 +11,7 @@ extends Node2D
 signal finished
 
 const Art = preload("res://scripts/art.gd")
+const Baked = preload("res://scripts/baked.gd")
 
 const DURATION := 20.0
 const SPAWN_EVERY := 0.9
@@ -24,9 +25,13 @@ const STREAM := [Vector2(-30, 800), Vector2(190, 730), Vector2(430, 780), Vector
 ## One drawing layer. It calls back into this script so all drawing stays here.
 class Layer extends Node2D:
 	var painter: Callable
+	## How long the last redraw took, for performance checks.
+	var last_usec := 0
 
 	func _draw() -> void:
+		var start := Time.get_ticks_usec()
 		painter.call(self)
+		last_usec = Time.get_ticks_usec() - start
 
 
 var time_left := DURATION
@@ -62,12 +67,12 @@ var trunks := []
 var clovers := []
 var speckles := []
 
-var floor_layer: Layer
+var floor_layer: Baked
 var shade_layer: Layer
 var light_under: Layer
 var objects: Layer
 var light_over: Layer
-var canopy_layer: Layer
+var canopy_layer: Baked
 var ui_layer: Layer
 var track_box: StyleBoxFlat
 var basket_box: StyleBoxFlat
@@ -90,12 +95,14 @@ func _ready() -> void:
 	basket_box.set_corner_radius_all(22)
 	basket_box.anti_aliasing = true
 
-	floor_layer = _add_layer(_paint_floor, false)
+	floor_layer = Baked.new(_paint_floor)
+	add_child(floor_layer)
 	shade_layer = _add_layer(_paint_shade, false)
 	light_under = _add_layer(_paint_light_under, true)
 	objects = _add_layer(_paint_objects, false)
 	light_over = _add_layer(_paint_light_over, true)
-	canopy_layer = _add_layer(_paint_canopy, false)
+	canopy_layer = Baked.new(_paint_canopy)
+	add_child(canopy_layer)
 	ui_layer = _add_layer(_paint_ui, false)
 	_place_obstacles()
 	for i in 3:

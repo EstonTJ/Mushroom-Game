@@ -86,8 +86,7 @@ func _ready() -> void:
 	# Full night with the new potions going off among all four creature types.
 	main._on_action()
 	def.night_amt = 1.0
-	def.ground_layer.queue_redraw()
-	def.canopy_layer.queue_redraw()
+	def.baked_night = -1.0
 	def.ward = 4
 	def.enemies = []
 	var lineup := [["mischief", 0, 330.0], ["thornback", 0, 520.0], ["troll", 1, 300.0], ["wisp", 1, 560.0],

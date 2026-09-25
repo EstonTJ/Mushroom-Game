@@ -100,3 +100,21 @@ Penicillin and Lichen. Notes from the check:
 
 The game says it on every unlock card and Guide page: real wild mushrooms can
 be deadly, so never eat one you find.
+
+## Playtesting shortcuts (web)
+
+- `?day=N` on the game's address starts a fresh run on day N with 5 of every
+  potion available by then (e.g. `.../Mushroom-Game/?day=25`). It replaces
+  your saved run.
+- `?fps` shows a frame counter in the corner.
+- After an unexpected reload the top bar says where the last session stopped
+  (day, screen, frame rate, and whether Safari reported lost graphics).
+
+## Performance notes
+
+Phone browsers run GDScript far slower than desktop, so redrawing thousands
+of shapes every frame is what made the game crawl (and get killed) on iPhone.
+Scenery that rarely changes is painted once into an image (`scripts/baked.gd`)
+and repainted only when it changes; creatures come from a cached sprite strip
+(`scripts/sprites.gd`, 8 walk frames per kind). `tests/perf_test.tscn` times
+each drawing layer.

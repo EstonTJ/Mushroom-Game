@@ -285,6 +285,7 @@ const SAVE_VERSION := 1
 ## can miss a save if the page is killed right after it.
 const WEB_SAVE_KEY := "mushroom_moon_save"
 const WEB_DIAG_KEY := "mushroom_moon_diag"
+const WEB_EVENT_KEY := "mushroom_moon_event"
 
 ## Which screen the last save was made on ("forage", "brew" or "fortify"),
 ## so a reload resumes there.
@@ -380,6 +381,19 @@ func write_diag(phase: String) -> void:
 	var note := JSON.stringify({"day": day, "phase": phase, "fps": Engine.get_frames_per_second(),
 		"time": Time.get_unix_time_from_system()})
 	JavaScriptBridge.eval("try { localStorage.setItem(%s, %s); } catch (e) {}" % [JSON.stringify(WEB_DIAG_KEY), JSON.stringify(note)])
+
+
+## The last page event the web wrapper recorded ("graphics lost", "script
+## error" or "page closed"), then cleared. Empty if none.
+func take_last_event() -> Dictionary:
+	if not _web():
+		return {}
+	var raw = JavaScriptBridge.eval("(function(){ try { var v = localStorage.getItem(%s) || ''; localStorage.removeItem(%s); return v; } catch (e) { return ''; } })()"
+		% [JSON.stringify(WEB_EVENT_KEY), JSON.stringify(WEB_EVENT_KEY)])
+	if typeof(raw) != TYPE_STRING or raw == "":
+		return {}
+	var d = JSON.parse_string(raw)
+	return d if typeof(d) == TYPE_DICTIONARY else {}
 
 
 ## The note left by the previous session, then cleared. Empty if none.

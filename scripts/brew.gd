@@ -9,6 +9,7 @@ extends Node2D
 ## static and drawn once.
 
 const Art = preload("res://scripts/art.gd")
+const Baked = preload("res://scripts/baked.gd")
 
 const POT := Vector2(360, 700)
 const BUBBLES := 3
@@ -38,9 +39,13 @@ const FLY_TIME := 0.9
 ## One drawing layer. It calls back into this script so all drawing stays here.
 class Layer extends Node2D:
 	var painter: Callable
+	## How long the last redraw took, for performance checks.
+	var last_usec := 0
 
 	func _draw() -> void:
+		var start := Time.get_ticks_usec()
 		painter.call(self)
+		last_usec = Time.get_ticks_usec() - start
 
 
 var pot: Array[String] = []
@@ -64,7 +69,7 @@ var t := 0.0
 var steam_timer := 0.0
 var ember_timer := 0.0
 
-var room_layer: Layer
+var room_layer: Baked
 var light_under: Layer
 var objects: Layer
 var light_over: Layer
@@ -80,7 +85,8 @@ func _ready() -> void:
 	book_box = _box(Color("5a2f2a"), Color("3a1c19"), 18, 4)
 	sign_box = _box(Color("7a5a3e"), Color("4a3424"), 10, 3)
 	tip_box = _box(Color(0.08, 0.06, 0.06, 0.72), Color(1, 1, 1, 0.08), 12, 1)
-	room_layer = _add_layer(_paint_room, false)
+	room_layer = Baked.new(_paint_room)
+	add_child(room_layer)
 	light_under = _add_layer(_paint_light_under, true)
 	objects = _add_layer(_paint_objects, false)
 	light_over = _add_layer(_paint_light_over, true)
