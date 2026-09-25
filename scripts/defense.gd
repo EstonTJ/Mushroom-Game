@@ -14,7 +14,7 @@ signal night_over(won: bool, repelled: int)
 const Art = preload("res://scripts/art.gd")
 
 const HUT := Vector2(360, 1000)
-const HUT_SIZE := 160.0
+const HUT_SIZE := 185.0
 const POND := Vector2(360, 250)
 const BAR_Y := 1130.0
 const CELL_W := 120.0
@@ -486,7 +486,7 @@ func _fortify_tap(p: Vector2) -> void:
 	if selected == "":
 		return
 	var fam: String = Data.potions[selected]["family"]
-	if (fam == "ward" or fam == "mend") and p.distance_to(HUT + Vector2(0, -60)) < 120.0:
+	if (fam == "ward" or fam == "mend") and p.distance_to(HUT + Vector2(0, -80)) < 150.0:
 		_use_hut_potion()
 	elif fam == "roar":
 		_popup("Save it for the night!", p, Data.parchment)
@@ -679,10 +679,10 @@ func _draw_pos(e: Dictionary) -> Vector2:
 
 func _ward_points() -> Array:
 	var pts := []
-	var center := HUT + Vector2(0, -40)
+	var center := HUT + Vector2(0, -50)
 	for k in 6:
 		var ang := -PI / 2.0 + 0.52 + k * TAU / 6.0
-		pts.append(center + Vector2(cos(ang) * 150.0, sin(ang) * 118.0))
+		pts.append(center + Vector2(cos(ang) * 178.0, sin(ang) * 140.0))
 	return pts
 
 
@@ -827,7 +827,7 @@ func _paint_objects(ci: CanvasItem) -> void:
 			_paint_frost(ci, a)
 
 	if ward > 0:
-		var ring := Art.ellipse(HUT + Vector2(0, -40), 150, 118, 64)
+		var ring := Art.ellipse(HUT + Vector2(0, -50), 178, 140, 64)
 		ci.draw_colored_polygon(ring, Art.fade(Data.magic, 0.06))
 		Art.outline(ci, ring, Art.fade(Data.magic, 0.5 + 0.25 * sin(t * 4.0)), 3.0)
 	Art.hut(ci, HUT, HUT_SIZE, t, _broken())
@@ -1012,6 +1012,7 @@ func _paint_light_over(ci: CanvasItem) -> void:
 		Art.glow(ci, wins[i], 45, Art.fade(Data.lantern, (0.3 + 0.25 * n) * dim))
 	if broken < 4:
 		Art.glow(ci, Art.hut_lamp(HUT, HUT_SIZE), 26, Color(1.0, 0.8, 0.45, 0.4 + 0.35 * n))
+		Art.glow(ci, Art.hut_dormer(HUT, HUT_SIZE), 30, Art.fade(Data.lantern, 0.25 + 0.25 * n))
 	Art.glow(ci, Art.hut_cauldron(HUT, HUT_SIZE), 40, Color(0.5, 1.0, 0.5, 0.2 + 0.2 * n))
 	for l in lanterns:
 		Art.glow(ci, Art.lantern_lamp(l, LANTERN_SIZE), 34, Color(1.0, 0.8, 0.45, 0.4 + 0.35 * n))

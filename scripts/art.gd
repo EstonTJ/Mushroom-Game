@@ -608,171 +608,256 @@ static func _moth(ci: CanvasItem, pos: Vector2, s: float, a: float, t: float, bl
 	_eyes(ci, creature_eyes("moth", pos, s, t), s * 0.04, Color("ffd66b"), blink, a, line_w)
 
 
-static func hut_chimney(pos: Vector2, s: float) -> Vector2:
-	return pos + Vector2(s * 0.29, -s * 0.98)
-
-
-static func hut_windows(pos: Vector2, s: float) -> Array:
-	return [pos + Vector2(-s * 0.3, -s * 0.15), pos + Vector2(s * 0.3, -s * 0.15)]
-
-
-static func hut_cauldron(pos: Vector2, s: float) -> Vector2:
-	return pos + Vector2(s * 0.66, s * 0.12)
-
-
-## Witch's hut: stone footing and steps, plank walls with ivy, shingled roof
-## with a moon sign, chimney, arched glowing door with a lantern, round windows
-## with flower boxes, firewood, a roof mushroom and a cauldron outside.
-## broken (0 = whole, up to Data.HUT_HP - 1) adds damage in stages: cracks and
-## missing shingles, a broken window and loose door, a roof hole and broken
-## chimney, then a boarded window and soot.
+## Storybook witch's cottage. pos is the middle of the doorstep; s is the size.
+## broken (0 = whole, up to Data.HUT_HP - 1) adds damage in stages:
+## 1 cracked plaster, missing shingles, a loose shutter;
+## 2 a cracked window, the door hanging open, rubble, the lantern askew;
+## 3 a roof hole with rafters, a broken chimney, exposed bricks (and smoke);
+## 4 a boarded window, a sagging porch, soot, the lantern out.
 static func hut(ci: CanvasItem, pos: Vector2, s: float, t: float = 0.0, broken: int = 0) -> void:
-	var ink := fade(INK, 0.8)
-	var line_w := maxf(1.5, s * 0.015)
-	var dark_wood := Color("3e2c22")
-	var hole := Color("140e0c")
-	shadow(ci, pos + Vector2(0, s * 0.35), s * 0.8, s * 0.13)
+	var line := Color("2a1a22")
+	var lw := maxf(2.0, s * 0.014)
+	var timber := Color("4a3226")
+	var hole := Color("140c10")
+	var P := func(x: float, y: float) -> Vector2: return pos + Vector2(x, y) * s
 
-	# Firewood stacked against the left wall.
+	shadow(ci, pos + Vector2(0.02, 0.36) * s, s * 0.9, s * 0.14)
+
+	# Firewood stack and a mushroom cluster at the base.
 	for row in 3:
 		for k in 3 - row:
-			var lp := pos + Vector2(-s * 0.72 + k * s * 0.09 + row * s * 0.045, s * 0.22 - row * s * 0.08)
-			ci.draw_circle(lp, s * 0.045, Color("7a5236"))
-			ci.draw_circle(lp, s * 0.028, Color("c8a070"))
+			var lp: Vector2 = P.call(-0.8 + k * 0.085 + row * 0.042, 0.24 - row * 0.075)
+			ci.draw_circle(lp, s * 0.042, Color("6a4a30"))
+			ci.draw_circle(lp, s * 0.03, Color("c8a070"))
+			ci.draw_arc(lp, s * 0.015, 0, TAU, 8, Color("9a7448"), 1.0, true)
 
-	# Chimney (drawn before the roof so the roof overlaps its base).
-	var ch := hut_chimney(pos, s)
-	var ch_h := s * 0.3 if broken < 3 else s * 0.2
-	var chimney := Rect2(ch.x - s * 0.07, ch.y + (s * 0.3 - ch_h), s * 0.14, ch_h)
-	ci.draw_rect(chimney, Color("6a6470"))
-	for k in 3:
-		ci.draw_line(Vector2(chimney.position.x, chimney.position.y + k * s * 0.07 + s * 0.04),
-			Vector2(chimney.end.x, chimney.position.y + k * s * 0.07 + s * 0.04), Color("55505c"), 1.0)
-	if broken < 3:
-		ci.draw_rect(Rect2(chimney.position + Vector2(-s * 0.015, -s * 0.04), Vector2(s * 0.17, s * 0.05)), Color("4d4853"))
-	else:
-		ci.draw_colored_polygon(PackedVector2Array([chimney.position, chimney.position + Vector2(s * 0.05, -s * 0.05),
-			chimney.position + Vector2(s * 0.09, -s * 0.01), chimney.position + Vector2(s * 0.14, -s * 0.06),
-			chimney.position + Vector2(s * 0.14, 0)]), Color("6a6470"))
-	ci.draw_rect(chimney, ink, false, line_w)
-
-	# Stone footing and door steps.
-	ci.draw_rect(Rect2(pos.x - s * 0.55, pos.y + s * 0.18, s * 1.1, s * 0.14), Color("55505c"))
-	for i in 8:
-		var sx := pos.x - s * 0.5 + i * s * 0.143
-		ci.draw_colored_polygon(ellipse(Vector2(sx, pos.y + s * 0.25), s * 0.07, s * 0.05, 10),
-			Color("6e6878") if i % 2 == 0 else Color("625c6c"))
-	ci.draw_rect(Rect2(pos.x - s * 0.18, pos.y + s * 0.3, s * 0.36, s * 0.05), Color("7a7488"))
-	ci.draw_rect(Rect2(pos.x - s * 0.24, pos.y + s * 0.35, s * 0.48, s * 0.05), Color("6a6478"))
-
-	# Plank walls, corner posts and a beam.
-	var walls := Rect2(pos.x - s * 0.5, pos.y - s * 0.4, s, s * 0.6)
-	ci.draw_rect(walls, Color("6b4f3a"))
-	for i in range(1, 10):
-		var px := walls.position.x + i * s * 0.1
-		ci.draw_line(Vector2(px, walls.position.y), Vector2(px, walls.end.y), Color("56402f"), line_w)
+	# Crooked stone chimney, behind the roof.
+	var ch := PackedVector2Array([P.call(0.42, -0.58), P.call(0.57, -0.58), P.call(0.6, -0.97), P.call(0.45, -1.0)])
 	if broken >= 3:
-		ci.draw_rect(Rect2(walls.position.x + s * 0.7, walls.position.y + s * 0.3, s * 0.1, s * 0.25), hole)
-		ci.draw_colored_polygon(PackedVector2Array([walls.position + Vector2(s * 0.7, s * 0.55), walls.position + Vector2(s * 0.8, s * 0.55),
-			walls.position + Vector2(s * 0.95, s * 0.66), walls.position + Vector2(s * 0.86, s * 0.68)]), Color("6b4f3a"))
-	ci.draw_rect(Rect2(walls.position.x, walls.position.y, s * 0.06, walls.size.y), dark_wood)
-	ci.draw_rect(Rect2(walls.end.x - s * 0.06, walls.position.y, s * 0.06, walls.size.y), dark_wood)
-	ci.draw_rect(Rect2(walls.position.x, pos.y - s * 0.02, s, s * 0.04), dark_wood)
-	ci.draw_rect(walls, ink, false, line_w)
+		ch = PackedVector2Array([P.call(0.42, -0.58), P.call(0.57, -0.58), P.call(0.585, -0.86), P.call(0.54, -0.82),
+			P.call(0.5, -0.9), P.call(0.44, -0.86)])
+	ci.draw_colored_polygon(ch, Color("6e6674"))
+	for k in 5:
+		var y := -0.64 - k * 0.07
+		if broken >= 3 and y < -0.84:
+			break
+		ci.draw_rect(Rect2(P.call(0.44 + (k % 2) * 0.05, y), Vector2(s * 0.06, s * 0.05)), Color("7e7684"))
+	if broken < 3:
+		ci.draw_colored_polygon(PackedVector2Array([P.call(0.43, -1.02), P.call(0.62, -0.99), P.call(0.62, -0.95), P.call(0.43, -0.98)]),
+			Color("4d4853"))
+	outline(ci, ch, line, lw)
 
-	# Ivy up the left corner.
+	# Stone foundation, each stone drawn.
+	ci.draw_rect(Rect2(P.call(-0.58, 0.14), Vector2(1.16, 0.2) * s), Color("4a4450"))
+	for row in 2:
+		var x := -0.58 + row * 0.06
+		var k := 0
+		while x < 0.56:
+			var w := 0.11 + 0.03 * sin(k * 2.7 + row)
+			var c: Vector2 = P.call(x + w * 0.5, 0.19 + row * 0.09)
+			ci.draw_colored_polygon(ellipse(c, s * w * 0.48, s * 0.042, 10), Color("7a7488") if (k + row) % 2 == 0 else Color("6a6478"))
+			ci.draw_colored_polygon(ellipse(c + Vector2(-s * 0.015, -s * 0.015), s * w * 0.25, s * 0.015, 8), Color(1, 1, 1, 0.12))
+			x += w
+			k += 1
+
+	# Plaster walls, darker up under the eaves, with timber framing.
+	var wall := PackedVector2Array([P.call(-0.53, -0.38), P.call(0.51, -0.4), P.call(0.55, 0.16), P.call(-0.57, 0.16)])
+	var shade_top := Color("a8906c")
+	var lit_bottom := Color("ecdcbc")
+	ci.draw_polygon(wall, PackedColorArray([shade_top, shade_top, lit_bottom, lit_bottom]))
+	if broken >= 3:
+		var bricks := Rect2(P.call(0.3, -0.02), Vector2(0.16, 0.12) * s)
+		ci.draw_rect(bricks, Color("8a4a3a"))
+		for r in 3:
+			ci.draw_line(bricks.position + Vector2(0, r * s * 0.04), bricks.position + Vector2(bricks.size.x, r * s * 0.04), Color("5a2e24"), 1.0)
+	var beams := [[Vector2(-0.53, -0.38), Vector2(-0.57, 0.16)], [Vector2(0.51, -0.4), Vector2(0.55, 0.16)],
+		[Vector2(-0.55, 0.03), Vector2(0.54, 0.03)], [Vector2(-0.55, -0.02), Vector2(-0.42, -0.36)],
+		[Vector2(0.53, -0.02), Vector2(0.41, -0.37)], [Vector2(-0.14, -0.39), Vector2(-0.15, 0.16)],
+		[Vector2(0.14, -0.39), Vector2(0.15, 0.16)]]
+	for b in beams:
+		ci.draw_line(P.call(b[0].x, b[0].y), P.call(b[1].x, b[1].y), timber, s * 0.045, true)
+	outline(ci, wall, line, lw)
+
+	# Ivy climbing the left corner.
 	var ivy := PackedVector2Array()
-	for k in 9:
-		ivy.append(pos + Vector2(-s * 0.46 + sin(k * 1.3) * s * 0.03, s * 0.18 - k * s * 0.07))
-	ci.draw_polyline(ivy, Color("3f6a3a"), line_w * 1.2, true)
-	for k in range(1, 9):
-		ci.draw_circle(ivy[k] + Vector2((k % 2) * s * 0.03 - s * 0.015, 0), s * 0.022, Color("5a8a4a"))
+	for k in 11:
+		ivy.append(P.call(-0.5 + sin(k * 1.4) * 0.03, 0.14 - k * 0.055))
+	ci.draw_polyline(ivy, Color("2f5a30"), lw, true)
+	for k in range(1, 11):
+		var side := 1.0 if k % 2 == 0 else -1.0
+		leaf(ci, ivy[k] + Vector2(side * s * 0.03, 0), s * 0.035, side * 0.9, Color("4f8a44") if k % 3 else Color("6aa05a"))
 
-	# Windows, with flower boxes; the right one is boarded up late on.
+	# Arched windows with warm light, bottle silhouettes, shutters and flower boxes.
 	var wins := hut_windows(pos, s)
 	for i in wins.size():
 		var w: Vector2 = wins[i]
+		var ww := s * 0.1
+		var arch := PackedVector2Array([w + Vector2(-ww, s * 0.1)])
+		for j in 11:
+			var ang := PI + PI * j / 10.0
+			arch.append(w + Vector2(cos(ang) * ww, sin(ang) * ww - s * 0.02))
+		arch.append(w + Vector2(ww, s * 0.1))
 		if i == 1 and broken >= 4:
-			ci.draw_circle(w, s * 0.1, hole)
-			ci.draw_line(w + Vector2(-s * 0.13, -s * 0.09), w + Vector2(s * 0.13, s * 0.09), Color("8a6242"), s * 0.035)
-			ci.draw_line(w + Vector2(-s * 0.13, s * 0.09), w + Vector2(s * 0.13, -s * 0.09), Color("8a6242"), s * 0.035)
-		elif i == 0 and broken >= 2:
-			ci.draw_circle(w, s * 0.1, Color("c8a050"))
-			ci.draw_polyline(PackedVector2Array([w + Vector2(-s * 0.08, -s * 0.05), w + Vector2(-s * 0.01, 0), w + Vector2(s * 0.03, -s * 0.07)]),
-				hole, line_w, true)
-			ci.draw_polyline(PackedVector2Array([w + Vector2(-s * 0.01, 0), w + Vector2(s * 0.02, s * 0.08)]), hole, line_w, true)
-			ci.draw_line(w + Vector2(-s * 0.1, 0), w + Vector2(0, 0), dark_wood, line_w * 1.4)
+			ci.draw_colored_polygon(arch, hole)
+			for k in 3:
+				var yb := -0.08 + k * 0.07
+				ci.draw_line(w + Vector2(-ww * 1.3, s * yb), w + Vector2(ww * 1.3, s * (yb + 0.03)), Color("8a6242"), s * 0.035, true)
 		else:
-			ci.draw_circle(w, s * 0.1, Color("ffd27a"))
-			ci.draw_line(w + Vector2(-s * 0.1, 0), w + Vector2(s * 0.1, 0), dark_wood, line_w * 1.4)
-			ci.draw_line(w + Vector2(0, -s * 0.1), w + Vector2(0, s * 0.1), dark_wood, line_w * 1.4)
-		ci.draw_arc(w, s * 0.1, 0, TAU, 24, dark_wood, line_w * 2.0, true)
-		var box := Rect2(w.x - s * 0.12, w.y + s * 0.11, s * 0.24, s * 0.05)
+			var cracked := i == 0 and broken >= 2
+			ci.draw_colored_polygon(arch, Color("f0b85a") if not cracked else Color("b88a40"))
+			ci.draw_circle(w + Vector2(0, s * 0.01), ww * 0.7, Color("ffe6a0") if not cracked else Color("d8b060"))
+			for k in 3:
+				var bx := -0.06 + k * 0.06
+				var bottle := w + Vector2(s * bx, s * 0.08)
+				ci.draw_rect(Rect2(bottle + Vector2(-s * 0.012, -s * 0.05), Vector2(s * 0.024, s * 0.05)), Color(0.3, 0.18, 0.12, 0.7))
+				ci.draw_circle(bottle + Vector2(0, -s * 0.015), s * 0.018, Color(0.3, 0.18, 0.12, 0.7))
+			ci.draw_line(w + Vector2(0, -ww - s * 0.02), w + Vector2(0, s * 0.1), timber, lw * 1.3)
+			ci.draw_line(w + Vector2(-ww, s * 0.02), w + Vector2(ww, s * 0.02), timber, lw * 1.3)
+			if cracked:
+				ci.draw_polyline(PackedVector2Array([w + Vector2(-ww * 0.8, -ww * 0.5), w + Vector2(-ww * 0.1, 0), w + Vector2(ww * 0.5, -ww * 0.9)]),
+					hole, lw, true)
+				ci.draw_polyline(PackedVector2Array([w + Vector2(-ww * 0.1, 0), w + Vector2(ww * 0.2, ww * 0.9)]), hole, lw, true)
+		ci.draw_polyline(arch, timber, lw * 2.2, true)
+		ci.draw_line(arch[0], arch[arch.size() - 1], timber, lw * 2.2, true)
+		var box := Rect2(w + Vector2(-ww * 1.25, s * 0.1), Vector2(ww * 2.5, s * 0.05))
 		ci.draw_rect(box, Color("7a5236"))
-		for k in 4:
-			var fc: Color = [Color("f5a8c8"), Color("ffe07a"), Color("c8b0f0"), Color("f5a8c8")][k]
-			ci.draw_circle(Vector2(box.position.x + s * 0.035 + k * s * 0.055, box.position.y - s * 0.012), s * 0.018, fc)
+		ci.draw_rect(box, line, false, 1.0)
+		for k in 5:
+			var fp := box.position + Vector2(s * 0.02 + k * s * 0.04, -s * 0.005)
+			ci.draw_circle(fp, s * 0.016, [Color("f5a8c8"), Color("ffe07a"), Color("c8b0f0"), Color("ff9a7a"), Color("f5a8c8")][k])
+		ci.draw_line(box.position + Vector2(s * 0.02, s * 0.05), box.position + Vector2(s * 0.01, s * 0.1), Color("4f8a44"), 1.5, true)
+		ci.draw_line(box.end + Vector2(-s * 0.03, 0), box.end + Vector2(-s * 0.02, s * 0.06), Color("4f8a44"), 1.5, true)
+	# A shutter beside the left window (hanging loose once hit).
+	var sh_top: Vector2 = wins[0] + Vector2(-s * 0.22, -s * 0.12)
+	var shutter := PackedVector2Array([sh_top, sh_top + Vector2(s * 0.09, 0), sh_top + Vector2(s * 0.09, s * 0.22), sh_top + Vector2(0, s * 0.22)])
+	if broken >= 1:
+		var pivot := sh_top + Vector2(s * 0.09, 0)
+		for k in shutter.size():
+			shutter[k] = pivot + (shutter[k] - pivot).rotated(0.35)
+	ci.draw_colored_polygon(shutter, Color("4a6a6a"))
+	ci.draw_line((shutter[0] + shutter[3]) * 0.5, (shutter[1] + shutter[2]) * 0.5, Color("3a5454"), lw, true)
+	outline(ci, shutter, line, lw * 0.8)
 
-	# Arched door, hanging ajar once the hut is badly hit, and its lantern.
-	var door_top := pos + Vector2(0, -s * 0.02)
-	ci.draw_circle(door_top, s * 0.13, dark_wood)
-	ci.draw_rect(Rect2(pos.x - s * 0.13, door_top.y, s * 0.26, s * 0.2), dark_wood)
-	ci.draw_circle(door_top, s * 0.1, Color("f0b35a"))
-	ci.draw_rect(Rect2(pos.x - s * 0.1, door_top.y, s * 0.2, s * 0.2), Color("f0b35a"))
-	ci.draw_rect(Rect2(pos.x - s * 0.1, door_top.y + s * 0.1, s * 0.2, s * 0.1), Color("e09a45"))
-	if broken >= 2:
-		ci.draw_colored_polygon(PackedVector2Array([pos + Vector2(-s * 0.1, -s * 0.02), pos + Vector2(-s * 0.02, s * 0.0),
-			pos + Vector2(-s * 0.04, s * 0.18), pos + Vector2(-s * 0.1, s * 0.18)]), Color("5a3a26"))
+	# Arched plank door, light spilling from the gap, iron hinges.
+	var door_c: Vector2 = P.call(0.0, -0.12)
+	var dw := s * 0.12
+	var door := PackedVector2Array([P.call(-0.12, 0.16)])
+	for j in 11:
+		var ang := PI + PI * j / 10.0
+		door.append(door_c + Vector2(cos(ang) * dw, sin(ang) * dw))
+	door.append(P.call(0.12, 0.16))
+	ci.draw_colored_polygon(door, Color("ffd27a"))
+	var panel := PackedVector2Array()
+	var open := 0.35 if broken >= 2 else 0.12
+	for p in door:
+		var rel: Vector2 = p - P.call(-0.12, 0.0)
+		panel.append(P.call(-0.12, 0.0) + Vector2(rel.x * (1.0 - open), rel.y))
+	ci.draw_colored_polygon(panel, Color("6a4028"))
+	for k in 3:
+		var px := -0.12 + (k + 1) * 0.06 * (1.0 - open)
+		ci.draw_line(P.call(px, -0.2), P.call(px, 0.16), Color("4a2c1c"), 1.5, true)
+	for hy in [-0.1, 0.08]:
+		ci.draw_line(P.call(-0.12, hy), P.call(-0.12 + 0.12 * (1.0 - open), hy), Color("2a2a30"), lw * 1.5, true)
+	ci.draw_polyline(door, timber, lw * 2.2, true)
+
+	# Little porch roof over the door, with its lantern.
+	var sag := 0.05 if broken >= 4 else 0.0
+	var porch := PackedVector2Array([P.call(-0.2, -0.24), P.call(0.0, -0.36), P.call(0.2, -0.24 + sag), P.call(0.2, -0.21 + sag), P.call(-0.2, -0.21)])
+	ci.draw_colored_polygon(porch, Color("5a3a4a"))
+	for k in 4:
+		ci.draw_arc(P.call(-0.15 + k * 0.1, -0.23 + (sag if k == 3 else 0.0)), s * 0.05, 0.2, PI - 0.2, 8, Color("3a2230"), lw * 0.8, true)
+	outline(ci, porch, line, lw)
+	ci.draw_line(P.call(-0.19, -0.21), P.call(-0.14, -0.13), timber, lw * 1.5, true)
+	ci.draw_line(P.call(0.19, -0.21 + sag), P.call(0.14, -0.13), timber, lw * 1.5, true)
 	var lamp := hut_lamp(pos, s)
-	ci.draw_line(lamp + Vector2(-s * 0.05, -s * 0.06), lamp + Vector2(0, -s * 0.06), dark_wood, line_w)
-	ci.draw_rect(Rect2(lamp.x - s * 0.025, lamp.y - s * 0.04, s * 0.05, s * 0.07), Color("ffcf7a") if broken < 4 else Color("3a3028"))
-	ci.draw_rect(Rect2(lamp.x - s * 0.025, lamp.y - s * 0.04, s * 0.05, s * 0.07), ink, false, 1.0)
+	var swing := 0.25 if broken >= 2 else 0.0
+	var hook: Vector2 = P.call(0.2, -0.21 + sag)
+	var lamp_at: Vector2 = hook + (lamp - hook).rotated(swing)
+	ci.draw_line(hook, lamp_at + Vector2(0, -s * 0.03), Color("2a2a30"), 1.5, true)
+	ci.draw_rect(Rect2(lamp_at + Vector2(-s * 0.025, -s * 0.03), Vector2(s * 0.05, s * 0.065)), Color("ffcf7a") if broken < 4 else Color("3a3028"))
+	ci.draw_rect(Rect2(lamp_at + Vector2(-s * 0.025, -s * 0.03), Vector2(s * 0.05, s * 0.065)), line, false, 1.2)
 
-	# Roof: shingles, missing ones and a hole with rafters as damage grows.
-	var roof := PackedVector2Array([pos + Vector2(-s * 0.72, -s * 0.34), pos + Vector2(0, -s * 1.02), pos + Vector2(s * 0.72, -s * 0.34)])
-	ci.draw_colored_polygon(roof, Color("3e2f2a"))
-	for row in 5:
-		var y := -s * 0.4 - row * s * 0.12
-		var half := s * 0.72 * (y + s * 1.02) / (s * 0.68)
-		var x := -half + s * 0.07
-		while x < half - s * 0.06:
-			ci.draw_arc(pos + Vector2(x, y), s * 0.06, 0.1, PI - 0.1, 8, Color("2a201d"), line_w, true)
-			x += s * 0.12
-	var missing := [Vector2(-0.3, -0.52), Vector2(0.18, -0.64), Vector2(0.38, -0.46), Vector2(-0.08, -0.78), Vector2(-0.44, -0.42)]
+	# Tall crooked roof with inward-curving sides and fish-scale shingles.
+	var left := _curve(P.call(-0.82, -0.34), P.call(-0.2, -0.58), P.call(0.08, -1.22), 14)
+	var right := _curve(P.call(0.08, -1.22), P.call(0.3, -0.62), P.call(0.82, -0.36), 14)
+	var roof := PackedVector2Array()
+	roof.append_array(left)
+	roof.append_array(right)
+	roof.append(P.call(0.8, -0.3))
+	roof.append(P.call(-0.8, -0.28))
+	ci.draw_colored_polygon(roof, Color("2e1c28"))
+	var tiles := [Color("6a4458"), Color("5a3a4c"), Color("74506a")]
+	var row := 0
+	var y := -1.08
+	while y < -0.3:
+		var xl := _x_at(left, pos.y + y * s)
+		var xr := _x_at(right, pos.y + y * s)
+		var x := xl + s * 0.05 + (row % 2) * s * 0.055
+		var k := 0
+		while x < xr - s * 0.04:
+			var c := Vector2(x, pos.y + y * s)
+			var scale := PackedVector2Array([c + Vector2(-s * 0.056, -s * 0.03)])
+			for j in 7:
+				var ang := PI * j / 6.0
+				scale.append(c + Vector2(-cos(ang) * s * 0.056, sin(ang) * s * 0.05))
+			scale.append(c + Vector2(s * 0.056, -s * 0.03))
+			ci.draw_colored_polygon(scale, tiles[(row + k) % tiles.size()])
+			ci.draw_arc(c, s * 0.053, 0.25, PI - 0.25, 8, Color("2e1c28"), 1.2, true)
+			x += s * 0.11
+			k += 1
+		y += 0.075
+		row += 1
+	var missing := [Vector2(-0.3, -0.5), Vector2(0.28, -0.6), Vector2(0.5, -0.42), Vector2(-0.05, -0.86), Vector2(-0.5, -0.38)]
 	for k in mini(broken * 2, missing.size()):
-		ci.draw_rect(Rect2(pos + missing[k] * s, Vector2(s * 0.1, s * 0.06)), Color("1e1612"))
+		ci.draw_colored_polygon(ellipse(P.call(missing[k].x, missing[k].y), s * 0.06, s * 0.035, 10), Color("1e1218"))
 	if broken >= 3:
-		var hole_pts := PackedVector2Array([pos + Vector2(-s * 0.2, -s * 0.62), pos + Vector2(-s * 0.05, -s * 0.74),
-			pos + Vector2(s * 0.08, -s * 0.66), pos + Vector2(s * 0.02, -s * 0.5), pos + Vector2(-s * 0.16, -s * 0.48)])
+		var hole_pts := PackedVector2Array([P.call(-0.22, -0.62), P.call(-0.05, -0.76), P.call(0.1, -0.66), P.call(0.04, -0.5), P.call(-0.16, -0.48)])
 		if broken >= 4:
-			hole_pts = PackedVector2Array([pos + Vector2(-s * 0.3, -s * 0.6), pos + Vector2(-s * 0.05, -s * 0.8),
-				pos + Vector2(s * 0.2, -s * 0.66), pos + Vector2(s * 0.12, -s * 0.44), pos + Vector2(-s * 0.24, -s * 0.44)])
+			hole_pts = PackedVector2Array([P.call(-0.32, -0.6), P.call(-0.05, -0.84), P.call(0.22, -0.68), P.call(0.14, -0.44), P.call(-0.26, -0.44)])
 		ci.draw_colored_polygon(hole_pts, hole)
 		for k in 3:
-			var rx := -0.2 + k * 0.12
-			ci.draw_line(pos + Vector2(rx * s, -s * 0.46), pos + Vector2((rx + 0.1) * s, -s * 0.76), Color("5a3a26"), line_w * 2.0, true)
-	ci.draw_colored_polygon(PackedVector2Array([pos + Vector2(0, -s * 1.02), pos + Vector2(s * 0.72, -s * 0.34),
-		pos + Vector2(s * 0.5, -s * 0.34)]), Color(0, 0, 0, 0.18))
-	outline(ci, roof, ink, line_w * 1.5)
-	ci.draw_line(pos + Vector2(0, -s * 1.02), pos + Vector2(0, -s * 1.14), dark_wood, line_w * 1.5)
-	ci.draw_circle(pos + Vector2(0, -s * 1.18), s * 0.05, Color("f0d890"))
-	ci.draw_circle(pos + Vector2(s * 0.022, -s * 1.195), s * 0.042, Color("3e2f2a"))
-	mushroom(ci, pos + Vector2(-s * 0.52, -s * 0.36), s * 0.22, Color("b58fd6"))
+			var rx := -0.22 + k * 0.12
+			ci.draw_line(P.call(rx, -0.46), P.call(rx + 0.1, -0.78), Color("5a3a26"), lw * 2.0, true)
+		outline(ci, hole_pts, Color("1e1218"), lw)
+	# Shade the right-hand slope, then the eave's underside and the outline.
+	var shade := PackedVector2Array()
+	shade.append_array(right)
+	shade.append(P.call(0.8, -0.3))
+	shade.append(P.call(0.1, -0.3))
+	ci.draw_colored_polygon(shade, Color(0.05, 0.0, 0.08, 0.22))
+	ci.draw_line(P.call(-0.8, -0.28), P.call(0.8, -0.3), Color("1e1218"), s * 0.03, true)
+	outline(ci, roof, line, lw * 1.5)
+	ci.draw_polyline(left.slice(8), Color(1, 0.85, 0.9, 0.25), lw, true)
 
-	# Cracks, soot and rubble.
+	# Round dormer window on the roof.
+	var dormer: Vector2 = P.call(0.04, -0.8)
+	ci.draw_circle(dormer, s * 0.075, timber)
+	ci.draw_circle(dormer, s * 0.055, Color("f0b85a") if broken < 4 else hole)
+	ci.draw_line(dormer + Vector2(-s * 0.055, 0), dormer + Vector2(s * 0.055, 0), timber, lw, true)
+
+	# Moon-and-star sign on the peak.
+	var tip: Vector2 = P.call(0.08, -1.22)
+	ci.draw_line(tip, tip + Vector2(0, -s * 0.12), Color("2a2a30"), lw, true)
+	ci.draw_circle(tip + Vector2(0, -s * 0.17), s * 0.055, Color("f0d890"))
+	ci.draw_circle(tip + Vector2(s * 0.025, -s * 0.185), s * 0.047, Color("2e1c28"))
+	sparkle(ci, tip + Vector2(s * 0.08, -s * 0.2), s * 0.03, Color("f0d890"))
+
+	# A mushroom growing on the roof edge.
+	mushroom(ci, P.call(-0.62, -0.4), s * 0.2, Color("b58fd6"))
+
+	# Damage on the walls, rubble and soot.
 	if broken >= 1:
-		ci.draw_polyline(PackedVector2Array([walls.position + Vector2(s * 0.2, s * 0.05), walls.position + Vector2(s * 0.26, s * 0.16),
-			walls.position + Vector2(s * 0.22, s * 0.26), walls.position + Vector2(s * 0.3, s * 0.36)]), hole, line_w * 1.3, true)
-		ci.draw_colored_polygon(PackedVector2Array([walls.end + Vector2(-s * 0.1, -s * 0.5), walls.end + Vector2(-s * 0.02, -s * 0.52),
-			walls.end + Vector2(s * 0.04, -s * 0.3), walls.end + Vector2(-s * 0.03, -s * 0.29)]), Color("7a5a42"))
+		ci.draw_polyline(PackedVector2Array([P.call(-0.36, -0.3), P.call(-0.32, -0.2), P.call(-0.38, -0.1), P.call(-0.33, 0.0)]),
+			Color("5a4030"), lw * 1.2, true)
 	if broken >= 2:
-		for k in 5:
-			var rb := pos + Vector2(-s * 0.4 + k * s * 0.2 + sin(k * 3.1) * s * 0.05, s * 0.4 + sin(k * 1.7) * s * 0.03)
-			ci.draw_rect(Rect2(rb, Vector2(s * 0.07, s * 0.025)), Color("5a4030"))
+		ci.draw_polyline(PackedVector2Array([P.call(0.36, -0.36), P.call(0.3, -0.26), P.call(0.34, -0.16)]), Color("5a4030"), lw * 1.2, true)
+		for k in 6:
+			var rb: Vector2 = P.call(-0.45 + k * 0.18 + sin(k * 3.1) * 0.04, 0.4 + sin(k * 1.7) * 0.03)
+			ci.draw_colored_polygon(PackedVector2Array([rb, rb + Vector2(s * 0.06, -s * 0.01), rb + Vector2(s * 0.05, s * 0.025), rb + Vector2(0, s * 0.02)]),
+				Color("5a4030") if k % 2 == 0 else Color("5a3a4a"))
 	if broken >= 4:
 		for k in 3:
-			ci.draw_colored_polygon(ellipse(pos + Vector2(-s * 0.25 + k * s * 0.3, -s * 0.28 + k * s * 0.05), s * 0.1, s * 0.06, 12),
-				Color(0.05, 0.03, 0.03, 0.4))
+			glow(ci, P.call(-0.3 + k * 0.3, -0.28 + k * 0.04), s * 0.14, Color(0.05, 0.02, 0.02, 0.5))
 
 	var cc := hut_cauldron(pos, s)
 	shadow(ci, cc + Vector2(0, s * 0.08), s * 0.12, s * 0.03)
@@ -780,15 +865,52 @@ static func hut(ci: CanvasItem, pos: Vector2, s: float, t: float = 0.0, broken: 
 	ci.draw_colored_polygon(ellipse(cc + Vector2(0, -s * 0.06), s * 0.1, s * 0.035, 16), Color("3d3837"))
 	ci.draw_colored_polygon(ellipse(cc + Vector2(0, -s * 0.06), s * 0.08, s * 0.025, 16),
 		Color("7fd67a").lightened(0.1 * sin(t * 3.0)))
+	mushroom(ci, P.call(0.62, 0.3), s * 0.14, Color("e98bb0"))
+	mushroom(ci, P.call(0.68, 0.32), s * 0.1, Color("e98bb0"))
+
+
+## Points along a quadratic curve from a to b bending toward ctrl.
+static func _curve(a: Vector2, ctrl: Vector2, b: Vector2, n: int) -> PackedVector2Array:
+	var pts := PackedVector2Array()
+	for i in n + 1:
+		var u := float(i) / n
+		pts.append(a.lerp(ctrl, u).lerp(ctrl.lerp(b, u), u))
+	return pts
+
+
+## The x of a curve at height y (the curve runs monotonically in y).
+static func _x_at(pts: PackedVector2Array, y: float) -> float:
+	for i in pts.size() - 1:
+		var a := pts[i]
+		var b := pts[i + 1]
+		if (y - a.y) * (y - b.y) <= 0.0 and a.y != b.y:
+			return lerpf(a.x, b.x, (y - a.y) / (b.y - a.y))
+	return pts[0].x
+
+
+static func hut_chimney(pos: Vector2, s: float) -> Vector2:
+	return pos + Vector2(0.52, -1.02) * s
+
+
+static func hut_windows(pos: Vector2, s: float) -> Array:
+	return [pos + Vector2(-0.33, -0.16) * s, pos + Vector2(0.33, -0.16) * s]
+
+
+static func hut_cauldron(pos: Vector2, s: float) -> Vector2:
+	return pos + Vector2(0.76, 0.14) * s
 
 
 static func hut_lamp(pos: Vector2, s: float) -> Vector2:
-	return pos + Vector2(s * 0.19, -s * 0.06)
+	return pos + Vector2(0.2, -0.1) * s
 
 
 ## Where smoke rises from the roof hole once the hut is badly damaged.
 static func hut_roof_hole(pos: Vector2, s: float) -> Vector2:
-	return pos + Vector2(-s * 0.05, -s * 0.62)
+	return pos + Vector2(-0.06, -0.62) * s
+
+
+static func hut_dormer(pos: Vector2, s: float) -> Vector2:
+	return pos + Vector2(0.04, -0.8) * s
 
 
 static func lantern_lamp(pos: Vector2, s: float) -> Vector2:
