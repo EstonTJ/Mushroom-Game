@@ -19,6 +19,9 @@ const POND := Vector2(360, 250)
 const BAR_Y := 1130.0
 const CELL_W := 120.0
 const BAR_MAX := 6
+const COIN_ICON := Vector2(452, 140)
+const BONE_ICON := Vector2(566, 140)
+const LOOT_TIME := 0.7
 const NIGHT_FADE := 1.5
 const LANTERN_SIZE := 60.0
 const LEFT_PATH := [Vector2(40, 120), Vector2(180, 330), Vector2(110, 560), Vector2(250, 780), Vector2(330, 950)]
@@ -48,8 +51,12 @@ var particles := []
 var fireflies := []
 var spawned := 0
 var queue := []
+var group_left := 0
 var intro := {}
 var bar_page := 0
+var loot := []
+var coins_earned := 0
+var bones_earned := 0
 var roar_t := 1.0
 var shake := 0.0
 var spawn_timer := 0.0
@@ -279,6 +286,9 @@ func _process(delta: float) -> void:
 		p["t"] += delta
 	popups = popups.filter(func(p): return p["t"] < 1.0)
 	_update_particles(delta)
+	for l in loot:
+		l["t"] += delta
+	loot = loot.filter(func(l): return l["t"] < LOOT_TIME)
 	if not intro.is_empty():
 		intro["t"] += delta
 		if intro["t"] > 4.0:
@@ -299,8 +309,13 @@ func _night_step(delta: float) -> void:
 		spawn_timer -= delta
 		if spawn_timer <= 0.0:
 			var kind: String = queue[spawned]
-			# Scuttlers come in pairs: the next creature follows close behind.
-			spawn_timer = cfg["interval"] * (0.45 if kind == "scuttler" else 1.0)
+			# Creatures come in bunches: a few in quick succession, then a lull.
+			if group_left <= 0:
+				group_left = randi_range(1, cfg.get("group", 1))
+			group_left -= 1
+			spawn_timer = 0.35 if group_left > 0 else cfg["interval"] * randf_range(1.2, 2.0)
+			if kind == "scuttler":
+				spawn_timer = minf(spawn_timer, cfg["interval"] * 0.45)
 			enemies.append(_make_enemy(kind, randi() % 2))
 			spawned += 1
 			if not Data.seen_creatures.has(kind):
@@ -334,7 +349,7 @@ func _night_step(delta: float) -> void:
 		e["hurt"] = maxf(0.0, e["hurt"] - delta)
 		for a in areas:
 			if e["pos"].distance_to(a["pos"]) < a["radius"]:
-				var d: Dictionary = Data.potions[a["id"]]
+				var d: Dictionary = Data.potion_stats(a["id"])
 				if d["family"] == "ember":
 					continue
 				if info["flying"] and not d.get("flying", true):
@@ -361,7 +376,7 @@ func _night_step(delta: float) -> void:
 		if e["courage"] <= 0.0:
 			_scare(e)
 			repelled += 1
-			_popup("Shoo!", e["pos"], Data.magic)
+			_drop_loot(e)
 			continue
 		var c: Curve2D = curves[e["path"]]
 		e["offset"] = maxf(0.0, e["offset"] + e["speed"] * slow * delta)
@@ -399,6 +414,26 @@ func _night_step(delta: float) -> void:
 		_end(true)
 
 
+## A creature scared off by a potion drops coins, and sometimes a monster bone.
+## Both pop out and fly up to their counters in the status bar.
+func _drop_loot(e: Dictionary) -> void:
+	var info := _info(e)
+	var gained: int = info["coins"]
+	Data.coins += gained
+	coins_earned += gained
+	var from: Vector2 = e["pos"]
+	for i in gained:
+		loot.append({"kind": "coin", "from": from + Vector2(randf_range(-14, 14), randf_range(-10, 4)), "t": -i * 0.06,
+			"to": COIN_ICON})
+	var text := "+%d" % gained
+	if randf() < float(info["bone_chance"]):
+		Data.bones += 1
+		bones_earned += 1
+		loot.append({"kind": "bone", "from": from, "t": -0.1, "to": BONE_ICON})
+		text += "  Bone!"
+	_popup(text, from, Color("f5c04a"))
+
+
 func _make_enemy(kind: String, path: int) -> Dictionary:
 	var info: Dictionary = Data.creatures[kind]
 	var courage: float = cfg["courage"] * info["courage"]
@@ -422,7 +457,7 @@ func _scare(e: Dictionary) -> void:
 
 
 func _spawn_area(id: String, pos: Vector2) -> void:
-	var d: Dictionary = Data.potions[id]
+	var d: Dictionary = Data.potion_stats(id)
 	var duration: float = d.get("duration", 0.5)
 	areas.append({"id": id, "pos": pos, "radius": d.get("radius", 0.0), "time": duration, "max": duration,
 		"sd": randf() * TAU})
@@ -485,12 +520,12 @@ func _fortify_tap(p: Vector2) -> void:
 				s["trap"] = ""
 			elif selected != "" and _placeable(selected):
 				s["trap"] = selected
-				_burst(s["pos"], Data.potions[selected]["color"], 8, 90.0)
+				_burst(s["pos"], Data.potion_stats(selected)["color"], 8, 90.0)
 				_use_selected()
 			return
 	if selected == "":
 		return
-	var fam: String = Data.potions[selected]["family"]
+	var fam: String = Data.potion_stats(selected)["family"]
 	if (fam == "ward" or fam == "mend") and p.distance_to(HUT + Vector2(0, -80)) < 150.0:
 		_use_hut_potion()
 	elif fam == "roar":
@@ -500,7 +535,7 @@ func _fortify_tap(p: Vector2) -> void:
 func _night_tap(p: Vector2) -> void:
 	if selected == "":
 		return
-	var fam: String = Data.potions[selected]["family"]
+	var fam: String = Data.potion_stats(selected)["family"]
 	if fam == "ward" or fam == "mend":
 		_use_hut_potion()
 		return
@@ -515,7 +550,7 @@ func _night_tap(p: Vector2) -> void:
 			if _slot_free(s):
 				s["trap"] = selected
 				s["triggered"] = false
-				_burst(s["pos"], Data.potions[selected]["color"], 8, 90.0)
+				_burst(s["pos"], Data.potion_stats(selected)["color"], 8, 90.0)
 				_use_selected()
 			return
 	_spawn_area(selected, p)
@@ -524,12 +559,12 @@ func _night_tap(p: Vector2) -> void:
 
 ## Potions that can sit on a trap spot or be thrown onto the map.
 func _placeable(id: String) -> bool:
-	return Data.potions[id]["family"] in ["spore", "syrup", "ember", "frost", "befuddle"]
+	return Data.potion_stats(id)["family"] in ["spore", "syrup", "ember", "frost", "befuddle"]
 
 
 ## Ward and mend potions work on the hut, wherever you tap at night.
 func _use_hut_potion() -> void:
-	var d: Dictionary = Data.potions[selected]
+	var d: Dictionary = Data.potion_stats(selected)
 	if d["family"] == "ward":
 		ward += d["ward"]
 		_popup("Ward +%d" % d["ward"], HUT + Vector2(0, -170), Data.magic)
@@ -549,7 +584,7 @@ func _use_hut_potion() -> void:
 
 ## Lion's Roar: a shockwave from the hut that scares every creature on the map.
 func _roar() -> void:
-	var burst: float = Data.potions[selected]["burst"]
+	var burst: float = Data.potion_stats(selected)["burst"]
 	roar_t = 0.0
 	shake = 0.5
 	for e in enemies:
@@ -560,7 +595,7 @@ func _roar() -> void:
 
 
 func _bar_items() -> Array:
-	return Data.potion_order.filter(func(id): return Data.bottles[id] > 0)
+	return Data.bottle_keys().filter(func(key): return Data.bottles[key] > 0)
 
 
 ## Which bottles show in the bar: up to BAR_MAX, or BAR_MAX - 1 plus page arrows.
@@ -622,7 +657,7 @@ func _update_particles(delta: float) -> void:
 			_emit(Art.hut_roof_hole(HUT, HUT_SIZE) + Vector2(randf_range(-10, 10), 0), Vector2(randf_range(-6, 6), randf_range(-34, -24)),
 				2.6, 9.0, Color(0.2, 0.18, 0.2, 0.45), "smoke")
 	for a in areas:
-		if Data.potions[a["id"]]["family"] == "spore" and randf() < 0.5:
+		if Data.potion_stats(a["id"])["family"] == "spore" and randf() < 0.5:
 			var off := Vector2.from_angle(randf() * TAU) * randf() * float(a["radius"])
 			_emit(a["pos"] + off, Vector2(randf_range(-8, 8), randf_range(-22, -8)), 1.4, 2.5, Color("d9b8ff"), "mote")
 
@@ -791,9 +826,9 @@ func _paint_light_under(ci: CanvasItem) -> void:
 		if _slot_free(s):
 			Art.glow(ci, s["pos"], 60, Art.fade(Data.magic, 0.08 + 0.04 * sin(t * 3.0)))
 		else:
-			Art.glow(ci, s["pos"], 55, Art.fade(Data.potions[s["trap"]]["color"], 0.22))
+			Art.glow(ci, s["pos"], 55, Art.fade(Data.potion_stats(s["trap"])["color"], 0.22))
 	for a in areas:
-		Art.glow(ci, a["pos"], a["radius"] * 1.4, Art.fade(Data.potions[a["id"]]["color"], 0.35 * _area_strength(a)))
+		Art.glow(ci, a["pos"], a["radius"] * 1.4, Art.fade(Data.potion_stats(a["id"])["color"], 0.35 * _area_strength(a)))
 	if ward > 0:
 		Art.glow(ci, HUT + Vector2(0, -50), 230, Art.fade(Data.magic, 0.1 + 0.05 * sin(t * 4.0)))
 	if hit_flash > 0.0:
@@ -823,12 +858,12 @@ func _paint_objects(ci: CanvasItem) -> void:
 			_paint_rune(ci, s["pos"])
 		else:
 			Art.shadow(ci, s["pos"] + Vector2(0, 14), 16, 5)
-			Art.bottle(ci, s["pos"] + Vector2(0, -10 + sin(t * 2.2 + i) * 3.0), 52, Data.potions[s["trap"]]["color"])
+			Art.bottle(ci, s["pos"] + Vector2(0, -10 + sin(t * 2.2 + i) * 3.0), 52, Data.potion_stats(s["trap"])["color"])
 
 	for a in areas:
-		if Data.potions[a["id"]]["family"] == "syrup":
+		if Data.potion_stats(a["id"])["family"] == "syrup":
 			_paint_syrup(ci, a)
-		elif Data.potions[a["id"]]["family"] == "frost":
+		elif Data.potion_stats(a["id"])["family"] == "frost":
 			_paint_frost(ci, a)
 
 	if ward > 0:
@@ -872,7 +907,7 @@ func _paint_objects(ci: CanvasItem) -> void:
 				ci.draw_string(font, zp, "z", HORIZONTAL_ALIGNMENT_LEFT, -1, 14 + int(ph * 8), Color(0.9, 0.85, 1.0, 1.0 - ph))
 
 	for a in areas:
-		match Data.potions[a["id"]]["family"]:
+		match Data.potion_stats(a["id"])["family"]:
 			"spore":
 				_paint_spore(ci, a)
 			"ember":
@@ -920,7 +955,7 @@ func _paint_rune(ci: CanvasItem, pos: Vector2) -> void:
 
 func _paint_syrup(ci: CanvasItem, a: Dictionary) -> void:
 	var s := _area_strength(a)
-	var col: Color = Data.potions[a["id"]]["color"]
+	var col: Color = Data.potion_stats(a["id"])["color"]
 	var r: float = a["radius"]
 	var sd: float = a["sd"]
 	var center: Vector2 = a["pos"]
@@ -942,7 +977,7 @@ func _paint_syrup(ci: CanvasItem, a: Dictionary) -> void:
 
 func _paint_spore(ci: CanvasItem, a: Dictionary) -> void:
 	var s := _area_strength(a)
-	var col: Color = Data.potions[a["id"]]["color"]
+	var col: Color = Data.potion_stats(a["id"])["color"]
 	var r: float = a["radius"]
 	var sd: float = a["sd"]
 	var center: Vector2 = a["pos"]
@@ -962,7 +997,7 @@ func _paint_ember(ci: CanvasItem, a: Dictionary) -> void:
 	var prog := 1.0 - life
 	var r: float = a["radius"]
 	var center: Vector2 = a["pos"]
-	var col: Color = Data.potions[a["id"]]["color"]
+	var col: Color = Data.potion_stats(a["id"])["color"]
 	Art.glow(ci, center, r * (0.6 + 0.6 * prog), Art.fade(col.lightened(0.1), 0.7 * life))
 	ci.draw_arc(center, r * (0.3 + 0.8 * prog), 0, TAU, 48, Art.fade(col.lightened(0.45), life), 10.0 * life + 1.0, true)
 	ci.draw_arc(center, r * (0.2 + 0.6 * prog), 0, TAU, 48, Art.fade(col, life * 0.8), 5.0 * life + 1.0, true)
@@ -993,7 +1028,7 @@ func _paint_frost(ci: CanvasItem, a: Dictionary) -> void:
 ## Befuddle: slowly turning violet spirals with a question mark or two.
 func _paint_befuddle(ci: CanvasItem, a: Dictionary) -> void:
 	var s := _area_strength(a)
-	var col: Color = Data.potions[a["id"]]["color"]
+	var col: Color = Data.potion_stats(a["id"])["color"]
 	var r: float = a["radius"]
 	var center: Vector2 = a["pos"]
 	Art.glow(ci, center, r, Art.fade(col, 0.3 * s))
@@ -1024,7 +1059,7 @@ func _paint_light_over(ci: CanvasItem) -> void:
 	for i in slots.size():
 		var s: Dictionary = slots[i]
 		if not _slot_free(s):
-			Art.glow(ci, s["pos"] + Vector2(0, -6 + sin(t * 2.2 + i) * 3.0), 28, Art.fade(Data.potions[s["trap"]]["color"], 0.35))
+			Art.glow(ci, s["pos"] + Vector2(0, -6 + sin(t * 2.2 + i) * 3.0), 28, Art.fade(Data.potion_stats(s["trap"])["color"], 0.35))
 	for e in enemies:
 		var fade := 1.0 - maxf(0.0, e["flee"])
 		var pos := _draw_pos(e)
@@ -1090,12 +1125,31 @@ func _paint_ui(ci: CanvasItem) -> void:
 			x += 100.0
 	else:
 		for i in Data.HUT_HP:
-			Art.heart(ci, Vector2(40 + i * 28, 140), 20, Color("ff7a6b") if i < hut_hp else Color(1, 1, 1, 0.15))
-		ci.draw_string(font, Vector2(470, 148), "Repelled %d/%d" % [repelled, cfg["count"]],
-			HORIZONTAL_ALIGNMENT_LEFT, -1, 22, Data.parchment)
-	var ward_x := 330.0 if mode == "night" else 620.0
+			Art.heart(ci, Vector2(36 + i * 26, 140), 19, Color("ff7a6b") if i < hut_hp else Color(1, 1, 1, 0.15))
+		Art.creature(ci, "mischief", Vector2(318, 150), 22.0, 1.0, 0.0, false)
+		ci.draw_string(font, Vector2(334, 148), "%d/%d" % [repelled, cfg["count"]], HORIZONTAL_ALIGNMENT_LEFT, -1, 20, Data.parchment)
+	if mode == "night":
+		Art.coin(ci, COIN_ICON, 24)
+		ci.draw_string(font, COIN_ICON + Vector2(16, 8), str(Data.coins), HORIZONTAL_ALIGNMENT_LEFT, -1, 20, Data.parchment)
+		Art.bone(ci, BONE_ICON, 30)
+		ci.draw_string(font, BONE_ICON + Vector2(20, 8), str(Data.bones), HORIZONTAL_ALIGNMENT_LEFT, -1, 20, Data.parchment)
+	var ward_x := 234.0 if mode == "night" else 620.0
 	Art.crystal(ci, Vector2(ward_x, 142), 24, Data.magic, 1.0 if ward > 0 else 0.35)
-	ci.draw_string(font, Vector2(ward_x + 16, 148), "x%d" % ward, HORIZONTAL_ALIGNMENT_LEFT, -1, 22, Data.parchment)
+	ci.draw_string(font, Vector2(ward_x + 14, 148), "x%d" % ward, HORIZONTAL_ALIGNMENT_LEFT, -1, 20, Data.parchment)
+
+	# Loot flying up to the counters.
+	for l in loot:
+		var k := clampf(l["t"] / LOOT_TIME, 0.0, 1.0)
+		if l["t"] < 0.0:
+			continue
+		var from: Vector2 = l["from"]
+		var to: Vector2 = l["to"]
+		var ctrl := (from + to) * 0.5 + Vector2(0, -160)
+		var at := from.lerp(ctrl, k).lerp(ctrl.lerp(to, k), k)
+		if l["kind"] == "coin":
+			Art.coin(ci, at, 22.0 - 6.0 * k)
+		else:
+			Art.bone(ci, at, 34.0 - 8.0 * k, 1.0, -0.5 + k * 6.0)
 
 	if not intro.is_empty():
 		_paint_intro(ci, rid, font)
@@ -1109,11 +1163,14 @@ func _paint_ui(ci: CanvasItem) -> void:
 			720, 20, Color(1, 1, 1, 0.5))
 	for i in shown.size():
 		var id: String = shown[i]
-		var info: Dictionary = Data.potions[id]
+		var info: Dictionary = Data.potion_stats(id)
 		var n: int = Data.bottles[id]
 		var cell := Rect2(lay["x0"] + CELL_W * i + 5, BAR_Y + 10, CELL_W - 10, 130)
 		(cell_selected_box if selected == id else cell_box).draw(rid, cell)
 		Art.bottle(ci, Vector2(cell.get_center().x, BAR_Y + 64), 58, info["color"])
+		if Data.is_empowered(id):
+			Art.glow(ci, Vector2(cell.get_center().x, BAR_Y + 70), 40, Color(1, 0.95, 0.7, 0.25))
+			Art.bone(ci, cell.position + Vector2(24, 26), 26, 1.0, -0.6)
 		var badge := Vector2(cell.end.x - 18, BAR_Y + 28)
 		ci.draw_circle(badge, 14, Data.magic, true, -1.0, true)
 		ci.draw_string(font, badge + Vector2(-14, 6), str(n), HORIZONTAL_ALIGNMENT_CENTER, 28, 17, Data.ink)

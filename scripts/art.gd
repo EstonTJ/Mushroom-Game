@@ -973,3 +973,40 @@ static func leaf(ci: CanvasItem, pos: Vector2, s: float, ang: float, color: Colo
 		pts.append(pos + p.rotated(ang))
 	ci.draw_colored_polygon(pts, color)
 	ci.draw_line(pos + Vector2(0, -s * 0.8).rotated(ang), pos + Vector2(0, s * 0.9).rotated(ang), color.darkened(0.3), 1.2, true)
+
+
+## Cartoon monster bone: a shaft with two knobbly ends.
+static func bone(ci: CanvasItem, pos: Vector2, s: float, a: float = 1.0, ang: float = -0.5) -> void:
+	if s < 2.0 or a <= 0.0:
+		return
+	var ivory := fade(Color("efe6d0"), a)
+	var shade := fade(Color("c8bca0"), a)
+	var ink := fade(INK, 0.7 * a)
+	var dir := Vector2.from_angle(ang)
+	var side := dir.orthogonal()
+	var half := s * 0.34
+	var w := s * 0.12
+	var shaft := PackedVector2Array([pos - dir * half + side * w, pos + dir * half + side * w, pos + dir * half - side * w, pos - dir * half - side * w])
+	for end in [-1.0, 1.0]:
+		var c: Vector2 = pos + dir * half * end
+		ci.draw_circle(c + side * s * 0.12, s * 0.13, ink)
+		ci.draw_circle(c - side * s * 0.12, s * 0.13, ink)
+	ci.draw_colored_polygon(shaft, ink)
+	for end in [-1.0, 1.0]:
+		var c: Vector2 = pos + dir * half * end
+		ci.draw_circle(c + side * s * 0.12, s * 0.11, ivory)
+		ci.draw_circle(c - side * s * 0.12, s * 0.11, ivory)
+	var inner := PackedVector2Array([pos - dir * half + side * (w - 2.0), pos + dir * half + side * (w - 2.0),
+		pos + dir * half - side * (w - 2.0), pos - dir * half - side * (w - 2.0)])
+	ci.draw_colored_polygon(inner, ivory)
+	ci.draw_line(pos - dir * half * 0.7 - side * w * 0.4, pos + dir * half * 0.7 - side * w * 0.4, shade, maxf(1.0, s * 0.04), true)
+
+
+## Gold coin with a rim and a shine.
+static func coin(ci: CanvasItem, pos: Vector2, s: float, a: float = 1.0) -> void:
+	if s < 2.0 or a <= 0.0:
+		return
+	ci.draw_circle(pos, s * 0.5, fade(Color("a8741a"), a))
+	ci.draw_circle(pos, s * 0.42, fade(Color("f5c04a"), a))
+	ci.draw_arc(pos, s * 0.3, 0, TAU, 20, fade(Color("d8962a"), a), maxf(1.0, s * 0.06), true)
+	ci.draw_arc(pos, s * 0.36, PI * 1.1, PI * 1.5, 8, fade(Color.WHITE, 0.8 * a), maxf(1.0, s * 0.07), true)

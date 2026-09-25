@@ -51,6 +51,10 @@ func _ready() -> void:
 	for id in ["spore", "syrup", "ember", "ward", "ink_pool", "frost", "great_ward", "befuddle"]:
 		Data.discovered[id] = true
 		Data.bottles[id] = 1
+	Data.upgrades["bone_mortar"] = true
+	Data.bones = 3
+	Data.coins = 27
+	Data.bottles["frost+"] = 1
 	var brew = main.phase_node
 	for id in ["scarlet_elf_cup", "puffball"]:
 		brew._on_press(brew.slot_center(Data.ingredient_order.find(id)))
@@ -108,6 +112,21 @@ func _ready() -> void:
 		def.hut_hp = Data.HUT_HP - b
 		await frames(3)
 		await shot("6_hut_%d" % b)
+
+	# The Dawn Market after a night.
+	var Shop = load("res://scripts/shop.gd")
+	var sh = Shop.new()
+	sh.earned_coins = 14
+	sh.earned_bones = 2
+	Data.coins = 44
+	Data.upgrades.erase("bone_mortar")
+	add_child(sh)
+	await frames(20)
+	await shot("10_market")
+	sh.try_buy("bone_mortar")
+	await frames(12)
+	await shot("10_market_bought")
+	sh.queue_free()
 
 	# A mid-game unlock screen: Scarlet Elf Cup on night 6 (Frost becomes possible).
 	main.queue_free()

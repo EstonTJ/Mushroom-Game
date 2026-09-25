@@ -30,6 +30,8 @@ const WINDOW := Vector2(72, 520)
 const CANDLE := Vector2(652, 572)
 const SURFACE := POT + Vector2(0, -106)
 const BOOK_TOP := 985.0
+## Where the bone bowl sits once the Bone Mortar has been bought.
+const BONE_BOWL := Vector2(78, 716)
 const FLY_TIME := 0.9
 
 
@@ -44,6 +46,7 @@ class Layer extends Node2D:
 var pot: Array[String] = []
 var dragging := ""
 var swirl := 0.0
+var pot_bone := false
 var bubble := {}
 var bubbles_done := 0
 var perfect_pops := 0
@@ -146,6 +149,9 @@ func return_pot() -> void:
 	for id in pot:
 		Data.inventory[id] += 1
 	pot.clear()
+	if pot_bone:
+		Data.bones += 1
+		pot_bone = false
 	_reset_bubbles()
 
 
@@ -180,6 +186,10 @@ func _on_press(p: Vector2) -> void:
 	if PAGE_NEXT.has_point(p):
 		book_page = posmod(book_page + 1, _page_count())
 		return
+	if has_mortar() and p.distance_to(BONE_BOWL) < 64.0:
+		if Data.bones > 0 and not pot_bone:
+			dragging = "bone"
+		return
 	if p.y > SHELF_TOP and p.y < SHELF_TOP + ROW_H * 2.0:
 		var i := slot_at(p)
 		if i >= 0:
@@ -191,7 +201,19 @@ func _on_press(p: Vector2) -> void:
 		_pop_bubble(true)
 
 
+func has_mortar() -> bool:
+	return Data.upgrades.has("bone_mortar")
+
+
 func _on_release(p: Vector2) -> void:
+	if dragging == "bone":
+		if p.distance_to(POT) < 200.0 and not pot_bone:
+			Data.bones -= 1
+			pot_bone = true
+			_splash(Color("efe6d0"))
+			_popup("Bone added: it will be Empowered!", Color("f5e6c0"))
+		dragging = ""
+		return
 	if dragging != "":
 		if p.distance_to(POT) < 200.0 and pot.size() < 2:
 			Data.inventory[dragging] -= 1
@@ -251,7 +273,9 @@ func _pop_bubble(tapped: bool) -> void:
 func _finish_brew() -> void:
 	var id: String = Data.recipe_for(pot[0], pot[1])
 	var flawless := perfect_pops == BUBBLES
+	var empowered := pot_bone
 	pot.clear()
+	pot_bone = false
 	_reset_bubbles()
 	if id == "":
 		murk = 1.0
@@ -260,14 +284,17 @@ func _finish_brew() -> void:
 				Vector2(randf_range(-25, 25), randf_range(-70, -30)), 1.6, 16.0, Color(0.35, 0.4, 0.3, 0.55), "smoke")
 		_popup("Murky sludge... try another mix", Color("b8c4a0"))
 		return
-	var info: Dictionary = Data.potions[id]
+	var key := id + ("+" if empowered else "")
+	var info: Dictionary = Data.potion_stats(key)
 	var made := 2 if flawless else 1
-	Data.bottles[id] += made
+	Data.bottles[key] += made
 	_burst(SURFACE, info["color"], 30, 260.0)
 	for k in made:
 		flyers.append({"id": id, "t": -0.18 * k})
 	book_page = floori(float(Data.potion_order.find(id)) / PER_PAGE)
 	var what: String = ("Perfect brew! +2 %s" % info["name"]) if flawless else ("+1 %s" % info["name"])
+	if empowered:
+		what = ("Perfect! +2 Empowered %s" if flawless else "+1 Empowered %s") % Data.potions[id]["name"]
 	if not Data.discovered.has(id):
 		Data.discovered[id] = true
 		what = ("Perfect! New recipe: %s x2" if flawless else "New recipe: %s!") % info["name"]
@@ -463,6 +490,8 @@ func _paint_objects(ci: CanvasItem) -> void:
 	for i in Data.ingredient_order.size():
 		_paint_jar(ci, rid, font, i)
 	_paint_candle(ci)
+	if has_mortar():
+		_paint_bone_bowl(ci, font)
 	_paint_fire(ci)
 	_paint_cauldron(ci)
 
@@ -475,7 +504,11 @@ func _paint_objects(ci: CanvasItem) -> void:
 		elif kind == "drop":
 			ci.draw_circle(p["pos"], p["size"], p["color"])
 
-	if dragging != "":
+	if dragging == "bone":
+		var m := get_global_mouse_position()
+		Art.shadow(ci, m + Vector2(10, 40), 26, 7)
+		Art.bone(ci, m, 70, 1.0, -0.5 + sin(t * 4.0) * 0.2)
+	elif dragging != "":
 		var m := get_global_mouse_position()
 		Art.shadow(ci, m + Vector2(10, 50), 34, 9)
 		Art.ingredient(ci, dragging, m, 92)
@@ -506,6 +539,30 @@ func _paint_jar(ci: CanvasItem, rid: RID, font: Font, i: int) -> void:
 		ci.draw_string(font, Vector2(c.x - 32, c.y + 12), "?", HORIZONTAL_ALIGNMENT_CENTER, 64, 30, Color(1, 1, 1, 0.35))
 		ci.draw_string(font, Vector2(c.x - 45, c.y - 49), "Night %d" % Data.unlock_night(id), HORIZONTAL_ALIGNMENT_CENTER,
 			90, 12, Color(1, 1, 1, 0.45))
+
+
+## Little wall shelf with a wooden bowl of monster bones and a count.
+func _paint_bone_bowl(ci: CanvasItem, font: Font) -> void:
+	ci.draw_rect(Rect2(BONE_BOWL.x - 64, BONE_BOWL.y + 26, 128, 12), Color("6d5140"))
+	ci.draw_colored_polygon(PackedVector2Array([Vector2(BONE_BOWL.x - 54, BONE_BOWL.y + 38), Vector2(BONE_BOWL.x - 34, BONE_BOWL.y + 38),
+		Vector2(BONE_BOWL.x - 54, BONE_BOWL.y + 62)]), Color("4a3424"))
+	var n: int = Data.bones - (1 if dragging == "bone" else 0)
+	for k in mini(n, 4):
+		Art.bone(ci, BONE_BOWL + Vector2(-18 + k * 12, -4 - (k % 2) * 8), 40, 1.0, -0.6 + k * 0.5)
+	var bowl := PackedVector2Array()
+	for j in 13:
+		var ang := PI * j / 12.0
+		bowl.append(BONE_BOWL + Vector2(cos(ang) * 46.0, sin(ang) * 30.0))
+	ci.draw_colored_polygon(bowl, Color("8a6242"))
+	ci.draw_colored_polygon(Art.ellipse(BONE_BOWL, 46, 10, 20), Color("6a4a30"))
+	for k in mini(n, 4):
+		Art.bone(ci, BONE_BOWL + Vector2(-16 + k * 11, -2), 30, 1.0, 0.3 - k * 0.4)
+	Art.outline(ci, bowl, Art.fade(Art.INK, 0.6), 2.0)
+	var tag := "x%d" % n
+	ci.draw_string_outline(font, BONE_BOWL + Vector2(-40, 56), "Bones " + tag, HORIZONTAL_ALIGNMENT_CENTER, 80, 15, 4, Color(0, 0, 0, 0.6))
+	ci.draw_string(font, BONE_BOWL + Vector2(-40, 56), "Bones " + tag, HORIZONTAL_ALIGNMENT_CENTER, 80, 15, Data.parchment)
+	if n > 0 and not pot_bone and dragging == "":
+		Art.sparkle(ci, BONE_BOWL + Vector2(36, -26), 6.0 + 3.0 * sin(t * 5.0), Color(1, 0.95, 0.7))
 
 
 func _paint_candle(ci: CanvasItem) -> void:
@@ -610,6 +667,11 @@ func _paint_cauldron(ci: CanvasItem) -> void:
 		else:
 			ci.draw_arc(bp, 12.0 + (ph - 0.8) * 30.0, 0, TAU, 14, Art.fade(liquid.lightened(0.4), (1.0 - ph) * 5.0), 2.0, true)
 
+	if pot_bone:
+		var bang := t * 0.4 + PI * 0.5
+		var bp := SURFACE + Vector2(cos(bang) * 50.0, sin(bang) * 10.0 - 8.0 + sin(t * 3.0) * 3.0)
+		Art.glow(ci, bp, 40, Color(1, 0.95, 0.7, 0.35))
+		Art.bone(ci, bp, 54, 1.0, -0.4 + sin(t * 1.5) * 0.3)
 	for k in pot.size():
 		var ang := swirl * 0.5 + k * PI + t * 0.25
 		var bob := sin(t * 2.5 + k) * 4.0
@@ -684,6 +746,8 @@ func _paint_ui(ci: CanvasItem) -> void:
 		tip = "Add one more ingredient."
 	elif pot.size() == 2:
 		tip = "Tap each bubble when it fills the ring!"
+	if has_mortar() and Data.bones > 0 and not pot_bone and pot.size() < 2:
+		tip += " Add a bone to empower it."
 	var tip_w := font.get_string_size(tip, HORIZONTAL_ALIGNMENT_LEFT, -1, 21).x
 	tip_box.draw(rid, Rect2(10, 932, tip_w + 24, 40))
 	ci.draw_string(font, Vector2(22, 959), tip, HORIZONTAL_ALIGNMENT_LEFT, -1, 21, Data.parchment)
@@ -781,5 +845,7 @@ func _paint_recipe(ci: CanvasItem, font: Font, i: int) -> void:
 			230, 14, Art.fade(Data.ink, 0.55))
 	else:
 		ci.draw_string(font, cell.position + Vector2(95, 66), "Not yet discovered", HORIZONTAL_ALIGNMENT_LEFT, -1, 17, Art.fade(Data.ink, 0.55))
-	ci.draw_string(font, cell.position + Vector2(95, 98), "%d bottled" % Data.bottles[id], HORIZONTAL_ALIGNMENT_LEFT,
-		-1, 16, Data.moss)
+	var bottled := "%d bottled" % Data.bottles[id]
+	if Data.bottles[id + "+"] > 0:
+		bottled += ", %d empowered" % Data.bottles[id + "+"]
+	ci.draw_string(font, cell.position + Vector2(95, 98), bottled, HORIZONTAL_ALIGNMENT_LEFT, -1, 16, Data.moss)

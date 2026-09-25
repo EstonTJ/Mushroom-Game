@@ -1,0 +1,207 @@
+extends Node2D
+## Dawn Market: after each night won, spend coins from scared-off creatures on
+## lab upgrades. The first is the Bone Mortar, which lets monster bones go into
+## the cauldron for Empowered potions.
+
+const Art = preload("res://scripts/art.gd")
+
+const CARD_W := 640.0
+const CARD_H := 250.0
+const FIRST_CARD_Y := 560.0
+
+var earned_coins := 0
+var earned_bones := 0
+var t := 0.0
+var particles := []
+var message := ""
+var message_t := 0.0
+var card_box: StyleBoxFlat
+var buy_box: StyleBoxFlat
+var soon_box: StyleBoxFlat
+
+
+func _ready() -> void:
+	card_box = _box(Color("efe3c8"), Color("8a6242"), 22, 5)
+	buy_box = _box(Color("4f8a44"), Color("2f5a30"), 14, 3)
+	soon_box = _box(Color(0.94, 0.89, 0.78, 0.55), Color(0.54, 0.38, 0.26, 0.5), 22, 3)
+
+
+func _box(bg: Color, border: Color, radius: int, border_w: int) -> StyleBoxFlat:
+	var b := StyleBoxFlat.new()
+	b.bg_color = bg
+	b.border_color = border
+	b.set_border_width_all(border_w)
+	b.set_corner_radius_all(radius)
+	b.anti_aliasing = true
+	return b
+
+
+func card_rect(i: int) -> Rect2:
+	return Rect2(40, FIRST_CARD_Y + i * (CARD_H + 24), CARD_W, CARD_H)
+
+
+func buy_rect(i: int) -> Rect2:
+	var c := card_rect(i)
+	return Rect2(c.end.x - 196, c.end.y - 78, 172, 58)
+
+
+func _unhandled_input(event: InputEvent) -> void:
+	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
+		tap(get_global_mouse_position())
+
+
+func tap(p: Vector2) -> void:
+	for i in Data.shop_order.size():
+		if buy_rect(i).has_point(p):
+			try_buy(Data.shop_order[i])
+
+
+func try_buy(item: String) -> bool:
+	var info: Dictionary = Data.shop_items[item]
+	if Data.upgrades.has(item):
+		return false
+	if Data.buy(item):
+		message = "%s added to your lab!" % info["name"]
+		var at := buy_rect(Data.shop_order.find(item)).get_center()
+		for k in 40:
+			particles.append({"pos": at, "vel": Vector2.from_angle(randf() * TAU) * randf_range(120, 380), "life": randf_range(0.6, 1.2),
+				"max": 1.2, "color": [Color("ffd35a"), Color.WHITE, Color("8bc5c3")][k % 3]})
+		Data.save_game("market")
+	else:
+		message = "You need %d more coins." % (int(info["price"]) - Data.coins)
+	message_t = 0.0
+	return Data.upgrades.has(item)
+
+
+func _process(delta: float) -> void:
+	t += delta
+	message_t += delta
+	for p in particles:
+		p["life"] -= delta
+		p["vel"] = p["vel"] * 0.93 + Vector2(0, 80) * delta
+		p["pos"] += p["vel"] * delta
+	particles = particles.filter(func(p): return p["life"] > 0.0)
+	queue_redraw()
+
+
+func _draw() -> void:
+	var font := ThemeDB.fallback_font
+	var rid := get_canvas_item()
+	_draw_sky()
+	_draw_stall()
+
+	# Earnings and purse.
+	var purse := Rect2(40, 470, 640, 70)
+	card_box.draw(rid, purse)
+	Art.coin(self, purse.position + Vector2(44, 35), 34)
+	draw_string(font, purse.position + Vector2(70, 44), str(Data.coins), HORIZONTAL_ALIGNMENT_LEFT, -1, 28, Data.ink)
+	Art.bone(self, purse.position + Vector2(170, 35), 44)
+	draw_string(font, purse.position + Vector2(200, 44), str(Data.bones), HORIZONTAL_ALIGNMENT_LEFT, -1, 28, Data.ink)
+	var earned := "Last night: +%d coins, +%d bones" % [earned_coins, earned_bones]
+	draw_string(font, purse.position + Vector2(260, 44), earned, HORIZONTAL_ALIGNMENT_RIGHT, 360, 19, Color("6a5a48"))
+
+	for i in Data.shop_order.size():
+		_draw_item(font, rid, i, Data.shop_order[i])
+
+	var soon := card_rect(Data.shop_order.size())
+	soon.size.y = 110
+	soon_box.draw(rid, soon)
+	draw_string(font, soon.position + Vector2(0, 50), "More lab upgrades coming soon", HORIZONTAL_ALIGNMENT_CENTER, soon.size.x, 24,
+		Color(0.4, 0.3, 0.22, 0.8))
+	draw_string(font, soon.position + Vector2(0, 82), "Keep your coins and bones: the merchant brings new wares.", HORIZONTAL_ALIGNMENT_CENTER,
+		soon.size.x, 16, Color(0.4, 0.3, 0.22, 0.7))
+
+	if message != "" and message_t < 3.0:
+		var a := clampf(3.0 - message_t, 0.0, 1.0)
+		draw_string_outline(font, Vector2(0, 1230), message, HORIZONTAL_ALIGNMENT_CENTER, 720, 26, 7, Color(0, 0, 0, 0.6 * a))
+		draw_string(font, Vector2(0, 1230), message, HORIZONTAL_ALIGNMENT_CENTER, 720, 26, Art.fade(Color("ffd35a"), a))
+
+	for p in particles:
+		var f: float = p["life"] / p["max"]
+		Art.sparkle(self, p["pos"], 9.0 * f, Art.fade(p["color"], f))
+
+
+func _draw_item(font: Font, rid: RID, i: int, item: String) -> void:
+	var info: Dictionary = Data.shop_items[item]
+	var c := card_rect(i)
+	card_box.draw(rid, c)
+	var owned: bool = Data.upgrades.has(item)
+	var icon := c.position + Vector2(96, 118)
+	Art.glow(self, icon, 90, Color(1.0, 0.85, 0.5, 0.35))
+	_draw_mortar(icon, 1.0)
+	draw_string(font, c.position + Vector2(190, 52), info["name"], HORIZONTAL_ALIGNMENT_LEFT, -1, 32, Data.ink)
+	draw_string(font, c.position + Vector2(190, 82), "Lab upgrade", HORIZONTAL_ALIGNMENT_LEFT, -1, 18, Color("8a6242"))
+	draw_multiline_string(font, c.position + Vector2(190, 114), info["desc"], HORIZONTAL_ALIGNMENT_LEFT, c.size.x - 214, 17, 4,
+		Art.fade(Data.ink, 0.85))
+	var b := buy_rect(i)
+	if owned:
+		draw_string(font, b.position + Vector2(0, 38), "Owned", HORIZONTAL_ALIGNMENT_CENTER, b.size.x, 26, Color("4f8a44"))
+		Art.sparkle(self, b.position + Vector2(20, 28), 9.0, Color("4f8a44"))
+	else:
+		var can := Data.coins >= int(info["price"])
+		buy_box.bg_color = Color("4f8a44") if can else Color("9a8a70")
+		buy_box.draw(rid, b)
+		Art.coin(self, b.position + Vector2(34, 29), 30)
+		draw_string(font, b.position + Vector2(56, 39), "%d  Buy" % int(info["price"]), HORIZONTAL_ALIGNMENT_LEFT, -1, 24, Color.WHITE)
+
+
+## Stone mortar with a pestle and a bone poking out.
+func _draw_mortar(at: Vector2, a: float) -> void:
+	Art.shadow(self, at + Vector2(0, 46), 64, 12, a)
+	Art.bone(self, at + Vector2(-18, -34), 56, a, -1.1)
+	draw_line(at + Vector2(10, -10), at + Vector2(46, -70), Art.fade(Color("8a6242"), a), 14.0, true)
+	draw_circle(at + Vector2(46, -70), 9, Art.fade(Color("8a6242"), a))
+	var bowl := PackedVector2Array()
+	for j in 17:
+		var ang := PI * j / 16.0
+		bowl.append(at + Vector2(cos(ang) * 60.0, sin(ang) * 46.0 - 6.0))
+	draw_colored_polygon(bowl, Art.fade(Color("8a8494"), a))
+	draw_colored_polygon(Art.ellipse(at + Vector2(0, -6), 60, 16, 24), Art.fade(Color("6a6474"), a))
+	draw_colored_polygon(Art.ellipse(at + Vector2(0, -6), 48, 11, 20), Art.fade(Color("3e3a44"), a))
+	draw_colored_polygon(Art.ellipse(at + Vector2(-22, 14), 14, 6, 10), Art.fade(Color("aaa4b4"), a))
+	Art.outline(self, bowl, Art.fade(Art.INK, 0.6 * a), 2.0)
+
+
+func _draw_sky() -> void:
+	var top := Color("3a2f58")
+	var low := Color("f0b070")
+	draw_polygon(PackedVector2Array([Vector2(0, 0), Vector2(720, 0), Vector2(720, 1280), Vector2(0, 1280)]),
+		PackedColorArray([top, top, low, low]))
+	Art.glow(self, Vector2(560, 300), 260, Color(1.0, 0.85, 0.5, 0.45))
+	draw_circle(Vector2(560, 300), 60, Color("ffe0a0"))
+
+
+## Wooden market stall with a striped awning, goods and a lantern.
+func _draw_stall() -> void:
+	var font := ThemeDB.fallback_font
+	draw_rect(Rect2(60, 200, 18, 260), Color("5a4030"))
+	draw_rect(Rect2(642, 200, 18, 260), Color("5a4030"))
+	draw_rect(Rect2(50, 360, 620, 90), Color("7a5a3e"))
+	draw_rect(Rect2(50, 360, 620, 10), Color("9a7a5a"))
+	for k in 5:
+		var jar := Vector2(120 + k * 110, 330)
+		draw_rect(Rect2(jar.x - 22, jar.y - 30, 44, 50), Color(0.85, 0.93, 1.0, 0.35))
+		draw_rect(Rect2(jar.x - 20, jar.y - 38, 40, 10), Color("8a6242"))
+		if k % 2 == 0:
+			Art.bottle(self, jar + Vector2(0, -2), 34, [Color("b58fd6"), Color("a8e0ff"), Color("e8703f")][k / 2])
+		else:
+			Art.bone(self, jar + Vector2(0, -4), 36, 1.0, -0.4 + k)
+	var stripes := [Color("c84a3a"), Color("f5ead8")]
+	for k in 10:
+		var x := 40.0 + k * 64.0
+		draw_rect(Rect2(x, 150, 64, 60), stripes[k % 2])
+		var sc := PackedVector2Array()
+		for j in 9:
+			var ang := PI * j / 8.0
+			sc.append(Vector2(x + 32 + cos(ang) * 32.0, 210 + sin(ang) * 20.0))
+		draw_colored_polygon(sc, stripes[k % 2])
+	draw_rect(Rect2(34, 140, 652, 14), Color("5a4030"))
+	var sign := Rect2(240, 390, 240, 50)
+	draw_rect(sign, Color("efe3c8"))
+	draw_rect(sign, Color("5a4030"), false, 3.0)
+	draw_string(font, sign.position + Vector2(0, 35), "Dawn Market", HORIZONTAL_ALIGNMENT_CENTER, sign.size.x, 26, Color("7a3a2a"))
+	var lamp := Vector2(600, 250 + sin(t * 1.5) * 3.0)
+	draw_line(Vector2(600, 210), lamp + Vector2(0, -14), Color("2a2a30"), 2.0)
+	Art.glow(self, lamp, 50, Color(1.0, 0.8, 0.45, 0.5))
+	draw_rect(Rect2(lamp.x - 12, lamp.y - 14, 24, 30), Color("ffcf7a"))
+	draw_rect(Rect2(lamp.x - 12, lamp.y - 14, 24, 30), Art.INK, false, 2.0)

@@ -7,6 +7,7 @@ const Brew = preload("res://scripts/brew.gd")
 const Defense = preload("res://scripts/defense.gd")
 const Unlock = preload("res://scripts/unlock.gd")
 const Guide = preload("res://scripts/guide.gd")
+const Shop = preload("res://scripts/shop.gd")
 
 var phase := ""
 var phase_node = null
@@ -35,6 +36,8 @@ func _ready() -> void:
 			_enter_brew()
 		"fortify":
 			_enter_fortify()
+		"market":
+			_start_market(0, 0)
 		_:
 			_begin_day()
 	var note := "Welcome back! Resumed day %d." % Data.day
@@ -211,8 +214,10 @@ func _on_night_over(won: bool, repelled: int) -> void:
 		_set_text("The hut is safe!", "You survived all %d nights. Well brewed." % Data.NIGHTS,
 			"Play again", _new_game)
 	else:
-		_set_text("Dawn · hut is safe", "Repelled %d creatures. Unused bottles carry over." % repelled,
-			"Next day", _next_day)
+		var got_coins: int = phase_node.coins_earned
+		var got_bones: int = phase_node.bones_earned
+		_set_text("Dawn · hut is safe", "Repelled %d. Earned %d coins and %d bones." % [repelled, got_coins, got_bones],
+			"To market", func(): _to_market(got_coins, got_bones))
 
 
 func _retry_day() -> void:
@@ -220,10 +225,20 @@ func _retry_day() -> void:
 	_start_day()
 
 
-func _next_day() -> void:
+## After a won night: the next day begins at the Dawn Market.
+func _to_market(got_coins: int, got_bones: int) -> void:
+	if phase != "result":
+		return
 	Data.day += 1
-	Data.save_game()
-	_begin_day()
+	Data.save_game("market")
+	_start_market(got_coins, got_bones)
+
+
+func _start_market(got_coins: int, got_bones: int) -> void:
+	var shop := Shop.new()
+	shop.earned_coins = got_coins
+	shop.earned_bones = got_bones
+	_set_phase("market", shop, "Day %d · Dawn Market" % Data.day, "Spend coins on lab upgrades.", "Start day", _begin_day)
 
 
 func _new_game() -> void:

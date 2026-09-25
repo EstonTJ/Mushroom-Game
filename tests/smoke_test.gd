@@ -188,7 +188,18 @@ func _ready() -> void:
 	check(thrown and Data.bottles["ember"] == 0, "ember thrown")
 	print("      night 1 result: phase=%s hut=%d/%d ward=%d repelled=%d/%d" % [main.phase, def.hut_hp,
 		Data.HUT_HP, def.ward, def.repelled, def.cfg["count"]])
+	check(def.coins_earned > 0 and Data.coins == def.coins_earned, "scaring creatures off earns coins (%d)" % def.coins_earned)
 	if main.phase == "result" and def.hut_hp > 0:
+		main._on_action()
+		await frames(2)
+		check(Data.day == 2 and main.phase == "market", "a won night leads to the Dawn Market")
+		var mk = main.phase_node
+		Data.coins = 10
+		check(not mk.try_buy("bone_mortar") and Data.coins == 10, "the Bone Mortar can't be bought without enough coins")
+		Data.coins = 45
+		check(mk.try_buy("bone_mortar") and Data.coins == 15 and Data.upgrades.has("bone_mortar"), "buying the Bone Mortar costs 30 coins")
+		check(Data.load_game() and Data.upgrades.has("bone_mortar") and Data.coins == 15 and Data.saved_phase == "market",
+			"the purchase is saved, and a reload resumes at the market")
 		main._on_action()
 		await frames(2)
 		check(Data.day == 2 and main.phase == "unlock" and main.phase_node.current() == "ghost_fungus",
@@ -198,7 +209,30 @@ func _ready() -> void:
 		check(reloaded and Data.day == 2 and Data.unlock_seen == 1, "the won night is saved before the unlock screen")
 		main._on_action()
 		await frames(2)
-		check(main.phase == "forage" and Data.unlock_seen == 2, "then the forest")
+		check(main.phase == "forage", "then the forest")
+
+		# Bones in the lab: with the Bone Mortar, a bone in the pot makes an Empowered potion.
+		main.phase_node.time_left = 0.0
+		await frames(3)
+		var lab = main.phase_node
+		Data.bones = 2
+		Data.inventory["puffball"] = 2
+		Data.inventory["fly_agaric"] = 2
+		lab._on_press(lab.BONE_BOWL)
+		lab._on_release(lab.POT)
+		check(lab.pot_bone and Data.bones == 1, "a bone can be dragged into the cauldron")
+		var spore_plus: int = Data.bottles["spore+"]
+		brew_pair(lab, "puffball", "fly_agaric", "early")
+		check(Data.bottles["spore+"] == spore_plus + 1 and not lab.pot_bone, "the brew comes out Empowered (Spore Cloud+)")
+		var plain: Dictionary = Data.potion_stats("spore")
+		var boosted: Dictionary = Data.potion_stats("spore+")
+		check(boosted["radius"] > plain["radius"] and boosted["duration"] > plain["duration"] and boosted["dps"] > plain["dps"],
+			"an Empowered potion is bigger, longer and stronger")
+		check(Data.potion_stats("great_ward+")["ward"] == 7 and Data.potion_stats("mend+")["heal"] == 3, "Empowered wards and mends do more")
+		lab._on_press(lab.BONE_BOWL)
+		lab._on_release(lab.POT)
+		lab.return_pot()
+		check(Data.bones == 1 and not lab.pot_bone, "emptying the pot gives the bone back")
 		Data.day = 4
 		main._begin_day()
 		await frames(1)
@@ -210,7 +244,7 @@ func _ready() -> void:
 	var n1 := Data.night_config(1)
 	var n12 := Data.night_config(12)
 	var n40 := Data.night_config(40)
-	check(n1["waves"].size() == 1 and n1["waves"]["mischief"] == 6, "night 1 is 6 Mischief")
+	check(n1["waves"].size() == 1 and n1["waves"]["mischief"] == 7, "night 1 is 7 Mischief")
 	check(n12["waves"].has("scuttler") and n12["waves"].has("moth") and n12["waves"].has("stumpling"),
 		"by night 12 all four creature types come")
 	var total40 := 0
@@ -269,6 +303,29 @@ func _ready() -> void:
 	d.hut_hp = 5
 	d._night_step(0.2)
 	check(d.ward == 0 and d.hut_hp == 4, "a stumpling costs two hits (one warded, one to the hut)")
+	var coins_before: int = Data.coins
+	var bones_before: int = Data.bones
+	var scared: Dictionary = d._make_enemy("stumpling", 1)
+	scared["offset"] = 200.0
+	scared["pos"] = c1.sample_baked(200.0)
+	scared["courage"] = 0.01
+	d.enemies = [scared]
+	d.areas = []
+	d._spawn_area("ember", c1.sample_baked(200.0))
+	d._night_step(0.05)
+	check(Data.coins == coins_before + 5 and Data.bones == bones_before + 1, "a scared-off stumpling drops 5 coins and a bone")
+	var warded: Dictionary = d._make_enemy("mischief", 1)
+	warded["offset"] = c1.get_baked_length() - 0.1
+	d.enemies = [warded]
+	d.ward = 3
+	var coins_mid: int = Data.coins
+	d._night_step(0.2)
+	check(Data.coins == coins_mid, "a creature blocked by the ward drops nothing")
+	d.areas = []
+	d._spawn_area("spore+", c1.sample_baked(300.0))
+	check(is_equal_approx(d.areas[0]["radius"], Data.potion_stats("spore")["radius"] * 1.3), "an Empowered bottle lands with the bigger radius")
+	d.areas = []
+	d.ward = 0
 
 	# Hut potions and the roar.
 	Data.bottles["mend"] = 2
@@ -308,10 +365,15 @@ func _ready() -> void:
 	Data.bottles["frost"] = 2
 	Data.discovered["frost"] = true
 	Data.seen_creatures["moth"] = true
+	Data.coins = 42
+	Data.bones = 3
+	Data.bottles["ember+"] = 2
+	Data.upgrades["bone_mortar"] = true
 	Data.save_game()
 	Data.reset_game()
 	check(Data.load_game() and Data.day == 7 and Data.inventory["morel"] == 5 and Data.bottles["frost"] == 2
-		and Data.discovered.has("frost") and Data.seen_creatures.has("moth"), "a save loads back to the same day and stock")
+		and Data.discovered.has("frost") and Data.seen_creatures.has("moth") and Data.coins == 42 and Data.bones == 3
+		and Data.bottles["ember+"] == 2 and Data.upgrades.has("bone_mortar"), "a save loads back the same day, stock, coins, bones and upgrades")
 	# Resuming mid-day: a save made when entering the cauldron or fortifying
 	# brings a reloaded game back to that screen, with the morning's snapshot.
 	Data.reset_game()

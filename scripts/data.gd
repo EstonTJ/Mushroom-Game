@@ -189,6 +189,8 @@ var potions := {
 }
 
 # Creature types. speed and courage multiply the night's base values.
+# coins and bone_chance: loot when a creature is scared off by a potion
+# (not when it's blocked by a ward).
 # flying: skips ground traps and most puddles. heavy: syrup only halves its speed.
 # damage: hut hits (or ward charges) it costs when it reaches the hut.
 # first_night: the night this type starts turning up; share: its part of the
@@ -197,19 +199,34 @@ var creature_order := ["mischief", "scuttler", "stumpling", "moth"]
 var creatures := {
 	"mischief": {"name": "Mischief", "desc": "A hooded prankster.",
 		"speed": 1.0, "courage": 1.0, "size": 42.0, "flying": false, "heavy": false, "damage": 1,
-		"first_night": 1, "share": 0.0},
+		"first_night": 1, "share": 0.0, "coins": 2, "bone_chance": 0.3},
 	"scuttler": {"name": "Scuttler", "desc": "Fast but timid. Comes in pairs.",
 		"speed": 1.7, "courage": 0.5, "size": 34.0, "flying": false, "heavy": false, "damage": 1,
-		"first_night": 3, "share": 0.25},
+		"first_night": 3, "share": 0.25, "coins": 1, "bone_chance": 0.2},
 	"stumpling": {"name": "Stumpling", "desc": "Slow and stubborn. Too heavy to stick. Hits twice as hard.",
 		"speed": 0.6, "courage": 2.0, "size": 58.0, "flying": false, "heavy": true, "damage": 2,
-		"first_night": 9, "share": 0.15},
+		"first_night": 9, "share": 0.15, "coins": 5, "bone_chance": 1.0},
 	"moth": {"name": "Dusk Moth", "desc": "Flies over traps and syrup. Throw at it!",
 		"speed": 1.15, "courage": 0.8, "size": 46.0, "flying": true, "heavy": false, "damage": 1,
-		"first_night": 6, "share": 0.15},
+		"first_night": 6, "share": 0.15, "coins": 3, "bone_chance": 0.4},
 }
 
+## Lab upgrades sold at the dawn market. Bone Mortar lets a monster bone go
+## into the cauldron to brew an Empowered potion.
+var shop_items := {
+	"bone_mortar": {"name": "Bone Mortar", "price": 30,
+		"desc": "Grind monster bones into your brews. Adds a bone bowl to the cauldron: drop a bone in with two mushrooms to brew an Empowered potion (bigger, longer, stronger)."},
+}
+var shop_order := ["bone_mortar"]
+
+## How much stronger an Empowered potion (one brewed with a monster bone) is.
+const EMPOWER := {"radius": 1.3, "duration": 1.4, "dps": 1.5, "burst": 1.5, "ward": 2, "heal": 1}
+
 var day := 1
+var coins := 0
+var bones := 0
+var upgrades := {}
+var _empowered := {}
 var inventory := {}
 var bottles := {}
 var discovered := {}
@@ -226,10 +243,13 @@ func reset_game() -> void:
 	discovered.clear()
 	seen_creatures.clear()
 	unlock_seen = 0
+	coins = 0
+	bones = 0
+	upgrades.clear()
 	for id in ingredient_order:
 		inventory[id] = 0
-	for id in potion_order:
-		bottles[id] = 0
+	for key in bottle_keys():
+		bottles[key] = 0
 
 
 const SAVE_PATH := "user://save.json"
@@ -255,7 +275,7 @@ func _web() -> bool:
 func save_game(phase: String = "forage") -> void:
 	var text := JSON.stringify({"version": SAVE_VERSION, "day": day, "phase": phase, "inventory": inventory,
 		"bottles": bottles, "discovered": discovered, "seen_creatures": seen_creatures, "unlock_seen": unlock_seen,
-		"snapshot": _snapshot})
+		"coins": coins, "bones": bones, "upgrades": upgrades, "snapshot": _snapshot})
 	var f := FileAccess.open(SAVE_PATH, FileAccess.WRITE)
 	if f != null:
 		f.store_string(text)
@@ -291,8 +311,13 @@ func load_game() -> bool:
 	saved_phase = str(data.get("phase", "forage"))
 	for id in ingredient_order:
 		inventory[id] = int(data.get("inventory", {}).get(id, 0))
-	for id in potion_order:
-		bottles[id] = int(data.get("bottles", {}).get(id, 0))
+	for key in bottle_keys():
+		bottles[key] = int(data.get("bottles", {}).get(key, 0))
+	coins = int(data.get("coins", 0))
+	bones = int(data.get("bones", 0))
+	for u in data.get("upgrades", {}):
+		if shop_items.has(u):
+			upgrades[u] = true
 	for id in data.get("discovered", {}):
 		if potions.has(id):
 			discovered[id] = true
@@ -304,8 +329,10 @@ func load_game() -> bool:
 		_snapshot = {"inventory": {}, "bottles": {}}
 		for id in ingredient_order:
 			_snapshot["inventory"][id] = int(snap["inventory"].get(id, 0))
-		for id in potion_order:
-			_snapshot["bottles"][id] = int(snap["bottles"].get(id, 0))
+		for key in bottle_keys():
+			_snapshot["bottles"][key] = int(snap["bottles"].get(key, 0))
+		_snapshot["coins"] = int(snap.get("coins", coins))
+		_snapshot["bones"] = int(snap.get("bones", bones))
 	else:
 		take_snapshot()
 	return true
@@ -344,12 +371,14 @@ func take_last_diag() -> Dictionary:
 ## Saved at the start of each day so a lost night can be retried.
 ## Discovered recipes are kept on a retry: the player still knows them.
 func take_snapshot() -> void:
-	_snapshot = {"inventory": inventory.duplicate(), "bottles": bottles.duplicate()}
+	_snapshot = {"inventory": inventory.duplicate(), "bottles": bottles.duplicate(), "coins": coins, "bones": bones}
 
 
 func restore_snapshot() -> void:
 	inventory = _snapshot["inventory"].duplicate()
 	bottles = _snapshot["bottles"].duplicate()
+	coins = int(_snapshot.get("coins", coins))
+	bones = int(_snapshot.get("bones", bones))
 
 
 ## Badge colour for an edibility label: green edible, amber cook first,
@@ -362,6 +391,53 @@ func edibility_color(label: String) -> Color:
 	if label.begins_with("Inedible"):
 		return Color("8a7a60")
 	return Color("4f8a44")
+
+
+## Every bottle stock key: each potion id, and id + "+" for its Empowered form.
+func bottle_keys() -> Array:
+	var keys := []
+	for id in potion_order:
+		keys.append(id)
+		keys.append(id + "+")
+	return keys
+
+
+func base_id(key: String) -> String:
+	return key.trim_suffix("+")
+
+
+func is_empowered(key: String) -> bool:
+	return key.ends_with("+")
+
+
+## A potion's stats by bottle key. For an Empowered key ("spore+") the stats
+## are boosted by EMPOWER and the name gets a "+".
+func potion_stats(key: String) -> Dictionary:
+	if not is_empowered(key):
+		return potions[key]
+	if not _empowered.has(key):
+		var d: Dictionary = potions[base_id(key)].duplicate(true)
+		for stat in ["radius", "duration", "dps", "burst"]:
+			if d.has(stat):
+				d[stat] = d[stat] * EMPOWER[stat]
+		if d.has("ward"):
+			d["ward"] = int(d["ward"]) + EMPOWER["ward"]
+		if d.has("heal"):
+			d["heal"] = int(d["heal"]) + EMPOWER["heal"]
+		d["name"] = d["name"] + "+"
+		d["color"] = Color(d["color"]).lightened(0.15)
+		d["empowered"] = true
+		_empowered[key] = d
+	return _empowered[key]
+
+
+## Buy a lab upgrade. Returns false if already owned or not enough coins.
+func buy(item: String) -> bool:
+	if upgrades.has(item) or coins < int(shop_items[item]["price"]):
+		return false
+	coins -= int(shop_items[item]["price"])
+	upgrades[item] = true
+	return true
 
 
 func recipe_for(a: String, b: String) -> String:
@@ -402,10 +478,12 @@ func potion_night(id: String) -> int:
 	return best
 
 
-## Settings for night n: more creatures each night, a little faster and braver,
-## and new creature types easing in (2 on their first night, full share by the third).
+## Settings for night n. Tuned to feel overwhelming: 7 creatures on night 1
+## and one more every night, arriving faster and in bunches ("group": up to
+## that many at once, 0.35 s apart, then a lull of 1.2-2x interval). New
+## creature types ease in (2 on their first night, full share by the third).
 func night_config(n: int) -> Dictionary:
-	var count := 6 + int(round((n - 1) * 0.6))
+	var count := 7 + (n - 1)
 	var waves := {}
 	var used := 0
 	for kind in creature_order:
@@ -417,5 +495,5 @@ func night_config(n: int) -> Dictionary:
 		waves[kind] = k
 		used += k
 	waves["mischief"] = maxi(2, count - used)
-	return {"interval": maxf(0.9, 2.2 - (n - 1) * 0.035), "speed": minf(78.0, 55.0 + (n - 1) * 0.6),
-		"courage": 2.0 + (n - 1) * 0.07, "waves": waves}
+	return {"interval": maxf(0.75, 1.9 - (n - 1) * 0.03), "speed": minf(80.0, 56.0 + (n - 1) * 0.6),
+		"courage": 2.0 + (n - 1) * 0.08, "group": mini(5, 2 + floori((n - 1) / 5.0)), "waves": waves}
