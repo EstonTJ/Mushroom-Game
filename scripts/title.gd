@@ -12,12 +12,19 @@ signal market_pressed
 const Art = preload("res://scripts/art.gd")
 const Baked = preload("res://scripts/baked.gd")
 
-const BUTTON_W := 460.0
-const BUTTON_H := 82.0
-const FIRST_Y := 748.0
-const GAP := 94.0
+## The first button (Continue, or New game on a fresh start) is the big one;
+## the rest sit two to a row beneath it.
+const PRIMARY := Rect2(100, 894, 520, 100)
+const GRID_TOP := 1018.0
+const GRID_W := 254.0
+const GRID_H := 80.0
+const GRID_GAP := 12.0
 const YES := Rect2(120, 760, 220, 84)
 const NO := Rect2(380, 760, 220, 84)
+## Where the hut stands, and how big it is.
+const HUT_POS := Vector2(360, 830)
+const HUT_SIZE := 245.0
+const MOON := Vector2(360, 236)
 
 ## Set by main.gd before adding: whether a save exists, its day and screen,
 ## the furthest night, and a note about how the last session ended.
@@ -31,9 +38,6 @@ var t := 0.0
 var stars := []
 var fireflies := []
 var scene: Baked
-var button_box: StyleBoxFlat
-var main_box: StyleBoxFlat
-var danger_box: StyleBoxFlat
 
 
 func _ready() -> void:
@@ -44,23 +48,10 @@ func _ready() -> void:
 			"r": rng.randf_range(1.0, 2.4)})
 	for i in 14:
 		fireflies.append({"pos": Vector2(rng.randf_range(40, 680), rng.randf_range(760, 1240)), "ph": rng.randf() * TAU})
-	button_box = _box(Color(0.24, 0.18, 0.3, 0.85), Color(0.55, 0.77, 0.76, 0.6), 22, 3)
-	main_box = _box(Color("4f8a44"), Color("2f5a30"), 22, 3)
-	danger_box = _box(Color("b0413e"), Color("7a2a26"), 18, 3)
 	scene = Baked.new(_paint_scene)
 	# Children draw over their parent; the backdrop has to sit behind the title.
 	scene.z_index = -1
 	add_child(scene)
-
-
-func _box(bg: Color, border: Color, radius: int, border_w: int) -> StyleBoxFlat:
-	var b := StyleBoxFlat.new()
-	b.bg_color = bg
-	b.border_color = border
-	b.set_border_width_all(border_w)
-	b.set_corner_radius_all(radius)
-	b.anti_aliasing = true
-	return b
 
 
 ## The buttons on the title, top to bottom.
@@ -77,7 +68,15 @@ func buttons() -> Array:
 
 
 func button_rect(i: int) -> Rect2:
-	return Rect2(360 - BUTTON_W / 2.0, FIRST_Y + i * GAP, BUTTON_W, BUTTON_H)
+	if i == 0:
+		return PRIMARY
+	var n := buttons().size() - 1
+	var k := i - 1
+	var y := GRID_TOP + floori(k / 2.0) * (GRID_H + GRID_GAP)
+	# A button alone on its row spans the full width.
+	if k == n - 1 and n % 2 == 1:
+		return Rect2(PRIMARY.position.x, y, PRIMARY.size.x, GRID_H)
+	return Rect2(PRIMARY.position.x + (k % 2) * (GRID_W + GRID_GAP), y, GRID_W, GRID_H)
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -117,72 +116,118 @@ func _process(delta: float) -> void:
 	queue_redraw()
 
 
-## Baked backdrop: night sky, moon, hills, the hut and glowing mushrooms.
+## Baked backdrop: night sky, a large pale moon behind the title, hills,
+## pines, the hut and its glowing mushrooms.
 func _paint_scene(ci: CanvasItem) -> void:
-	var top := Color("141230")
-	var mid := Color("2e2458")
-	var low := Color("1a2a2a")
-	ci.draw_polygon(PackedVector2Array([Vector2(0, 0), Vector2(720, 0), Vector2(720, 700), Vector2(0, 700)]),
+	var top := Color("100e28")
+	var mid := Color("2a2152")
+	var low := Color("141c22")
+	ci.draw_polygon(PackedVector2Array([Vector2(0, 0), Vector2(720, 0), Vector2(720, 760), Vector2(0, 760)]),
 		PackedColorArray([top, top, mid, mid]))
-	ci.draw_polygon(PackedVector2Array([Vector2(0, 700), Vector2(720, 700), Vector2(720, 1280), Vector2(0, 1280)]),
+	ci.draw_polygon(PackedVector2Array([Vector2(0, 760), Vector2(720, 760), Vector2(720, 1280), Vector2(0, 1280)]),
 		PackedColorArray([mid, mid, low, low]))
-	var moon := Vector2(520, 230)
-	Art.glow(ci, moon, 300, Color(1.0, 0.95, 0.8, 0.35))
-	ci.draw_circle(moon, 96, Color("fff3d0"))
-	for c in [[Vector2(-30, -20), 16.0], [Vector2(25, 30), 12.0], [Vector2(40, -35), 8.0]]:
-		ci.draw_circle(moon + c[0], c[1], Color(0.9, 0.84, 0.7, 0.6))
-	var hills := [[Color("22203e"), 560.0, 0.0], [Color("1b2a2e"), 610.0, 1.7]]
+	# The moon sits behind the title, softened so the lettering stays on top.
+	Art.glow(ci, MOON, 330, Color(1.0, 0.92, 0.75, 0.22))
+	ci.draw_circle(MOON, 168, Color(0.99, 0.93, 0.78, 0.16))
+	ci.draw_circle(MOON, 150, Color(0.99, 0.94, 0.8, 0.2))
+	for c in [[Vector2(-70, -60), 26.0], [Vector2(60, 50), 20.0], [Vector2(80, -70), 12.0], [Vector2(-40, 80), 14.0]]:
+		ci.draw_circle(MOON + c[0], c[1], Color(0.75, 0.68, 0.58, 0.14))
+	var hills := [[Color("221f40"), 670.0, 0.0], [Color("1a282c"), 730.0, 1.7]]
 	for h in hills:
 		var pts := PackedVector2Array([Vector2(0, 1280)])
 		for k in 25:
 			var x := k * 30.0
-			pts.append(Vector2(x, h[1] + sin(x * 0.01 + h[2]) * 40.0 + sin(x * 0.027 + h[2]) * 16.0))
+			pts.append(Vector2(x, h[1] + sin(x * 0.01 + h[2]) * 34.0 + sin(x * 0.027 + h[2]) * 14.0))
 		pts.append(Vector2(720, 1280))
 		ci.draw_colored_polygon(pts, h[0])
 	for k in 10:
 		var tx := 20.0 + k * 78.0
-		var ty := 585.0 + sin(tx * 0.01) * 40.0
-		ci.draw_colored_polygon(PackedVector2Array([Vector2(tx - 26, ty + 30), Vector2(tx, ty - 70 - (k % 3) * 20), Vector2(tx + 26, ty + 30)]),
-			Color("121a22"))
-	Art.glow(ci, Vector2(360, 640), 260, Color(0.82, 0.62, 0.38, 0.25))
-	Art.hut(ci, Vector2(360, 690), 150.0, 0.0, 0)
-	for m in [["ghost_fungus", Vector2(120, 690), 70.0], ["fly_agaric", Vector2(230, 700), 62.0], ["amethyst_deceiver", Vector2(520, 700), 56.0],
-			["ghost_fungus", Vector2(610, 690), 60.0], ["chanterelle", Vector2(80, 720), 44.0], ["puffball", Vector2(650, 720), 40.0]]:
+		if absf(tx - 360.0) < 140.0:
+			continue
+		var ty := 720.0 + sin(tx * 0.01) * 30.0
+		ci.draw_colored_polygon(PackedVector2Array([Vector2(tx - 28, ty + 34), Vector2(tx, ty - 80 - (k % 3) * 22), Vector2(tx + 28, ty + 34)]),
+			Color("10181f"))
+	# Warm lamplight pooling round the hut, then the hut itself.
+	Art.glow(ci, HUT_POS + Vector2(0, -90), 300, Color(0.95, 0.66, 0.32, 0.26))
+	Art.shadow(ci, HUT_POS + Vector2(0, 8), 190, 26, 1.2)
+	Art.hut(ci, HUT_POS, HUT_SIZE, 0.0, 0)
+	for m in [["ghost_fungus", Vector2(112, 838), 74.0], ["fly_agaric", Vector2(184, 850), 60.0], ["amethyst_deceiver", Vector2(560, 848), 58.0],
+			["ghost_fungus", Vector2(628, 834), 64.0], ["chanterelle", Vector2(52, 860), 44.0], ["puffball", Vector2(680, 862), 40.0]]:
 		if m[0] == "ghost_fungus":
-			Art.glow(ci, m[1] + Vector2(0, -20), 90, Color(0.55, 1.0, 0.65, 0.35))
+			Art.glow(ci, m[1] + Vector2(0, -22), 100, Color(0.55, 1.0, 0.7, 0.3))
+		elif m[0] == "amethyst_deceiver":
+			Art.glow(ci, m[1] + Vector2(0, -24), 70, Color(0.7, 0.5, 1.0, 0.22))
 		Art.ingredient(ci, m[0], m[1], m[2])
-	ci.draw_rect(Rect2(0, 730, 720, 550), Color(0.06, 0.05, 0.1, 0.55))
+	# The ground fades to a dark footing for the buttons.
+	var clear := Color(0.05, 0.04, 0.09, 0.0)
+	var shade := Color(0.05, 0.04, 0.09, 0.78)
+	ci.draw_polygon(PackedVector2Array([Vector2(0, 850), Vector2(720, 850), Vector2(720, 930), Vector2(0, 930)]),
+		PackedColorArray([clear, clear, shade, shade]))
+	ci.draw_rect(Rect2(0, 930, 720, 350), shade)
+
+
+## A chunky frame with notched corners, a lit top edge and a shaded bottom,
+## so the buttons match the outlined storybook art.
+func _frame(r: Rect2, fill: Color, edge: Color, lit: Color, shade: Color, notch: float = 8.0, shadow := true) -> void:
+	if shadow:
+		_notched(Rect2(r.position + Vector2(0, 6), r.size), Color(0, 0, 0, 0.45), notch)
+	_notched(r, edge, notch)
+	var inner := r.grow(-4)
+	_notched(inner, fill, notch - 3)
+	draw_rect(Rect2(inner.position.x + notch, inner.position.y, inner.size.x - notch * 2, 4), lit)
+	draw_rect(Rect2(inner.position.x + notch, inner.end.y - 6, inner.size.x - notch * 2, 6), shade)
+
+
+func _notched(r: Rect2, c: Color, n: float) -> void:
+	draw_rect(Rect2(r.position.x + n, r.position.y, r.size.x - n * 2, r.size.y), c)
+	draw_rect(Rect2(r.position.x, r.position.y + n, r.size.x, r.size.y - n * 2), c)
+	draw_rect(Rect2(r.position.x + n / 2.0, r.position.y + n / 2.0, r.size.x - n, r.size.y - n), c)
+
+
+## Title lettering: a hard drop shadow, a thick dark outline, then the fill.
+func _title_word(font: Font, y: float, text: String, size: int, fill: Color) -> void:
+	draw_string(font, Vector2(0, y + 8), text, HORIZONTAL_ALIGNMENT_CENTER, 720, size, Color(0.07, 0.03, 0.12, 0.7))
+	draw_string_outline(font, Vector2(0, y), text, HORIZONTAL_ALIGNMENT_CENTER, 720, size, 16, Color("2a1630"))
+	draw_string(font, Vector2(0, y), text, HORIZONTAL_ALIGNMENT_CENTER, 720, size, fill)
 
 
 func _draw() -> void:
 	var font := ThemeDB.fallback_font
-	var rid := get_canvas_item()
 	for s in stars:
+		if s["pos"].distance_to(MOON) < 175.0:
+			continue
 		var tw := 0.35 + 0.65 * absf(sin(t * 1.3 + s["ph"]))
 		draw_circle(s["pos"], s["r"], Color(1, 1, 0.9, 0.8 * tw))
+
+	# Lamplight in the windows and the ghost fungi breathe gently.
+	var breathe := 0.5 + 0.5 * sin(t * 1.4)
+	for w in Art.hut_windows(HUT_POS, HUT_SIZE):
+		Art.glow(self, w, 46, Color(1.0, 0.75, 0.35, 0.16 + 0.1 * breathe))
+	for g in [Vector2(112, 816), Vector2(628, 814)]:
+		Art.glow(self, g, 56, Color(0.6, 1.0, 0.75, 0.1 + 0.08 * (1.0 - breathe)))
 	for f in fireflies:
 		var pos: Vector2 = f["pos"] + Vector2(sin(t * 0.7 + f["ph"]) * 30.0, cos(t * 0.5 + f["ph"]) * 16.0)
 		var blink := 0.5 + 0.5 * sin(t * 3.0 + f["ph"])
-		Art.glow(self, pos, 14, Color(0.8, 1.0, 0.5, 0.5 * blink))
+		Art.glow(self, pos, 14, Color(0.8, 1.0, 0.5, 0.45 * blink))
 
-	var bob := sin(t * 1.2) * 4.0
-	draw_string_outline(font, Vector2(0, 190 + bob), "Mushroom", HORIZONTAL_ALIGNMENT_CENTER, 720, 92, 14, Color(0.08, 0.04, 0.14, 0.85))
-	draw_string(font, Vector2(0, 190 + bob), "Mushroom", HORIZONTAL_ALIGNMENT_CENTER, 720, 92, Color("f5e6c0"))
-	draw_string_outline(font, Vector2(0, 290 + bob), "Moon", HORIZONTAL_ALIGNMENT_CENTER, 720, 110, 14, Color(0.08, 0.04, 0.14, 0.85))
-	draw_string(font, Vector2(0, 290 + bob), "Moon", HORIZONTAL_ALIGNMENT_CENTER, 720, 110, Color("ffd890"))
-	draw_string_outline(font, Vector2(0, 350), "Forage by day. Brew your defenses. Protect the hut by night.", HORIZONTAL_ALIGNMENT_CENTER,
-		720, 21, 6, Color(0, 0, 0, 0.6))
-	draw_string(font, Vector2(0, 350), "Forage by day. Brew your defenses. Protect the hut by night.", HORIZONTAL_ALIGNMENT_CENTER,
-		720, 21, Color("c8f5e8"))
+	var bob := sin(t * 1.2) * 3.0
+	_title_word(font, 196 + bob, "Mushroom", 96, Color("f5e6c0"))
+	_title_word(font, 306 + bob, "Moon", 118, Color("ffd27a"))
+
+	# Subtitle on a dark ribbon so it reads over the moonlit sky.
+	var ribbon := Rect2(36, 352, 648, 46)
+	_frame(ribbon, Color(0.1, 0.07, 0.16, 0.82), Color(0.36, 0.28, 0.45, 0.9), Color(1, 1, 1, 0.06), Color(0, 0, 0, 0.2), 6.0, false)
+	draw_string(font, Vector2(0, 383), "Forage by day  ·  Brew your defenses  ·  Protect the hut by night", HORIZONTAL_ALIGNMENT_CENTER,
+		720, 20, Color("e8f2dc"))
 
 	if page == "confirm":
-		draw_rect(Rect2(40, 600, 640, 280), Color(0.08, 0.06, 0.12, 0.9))
-		draw_string(font, Vector2(0, 660), "Start a new game?", HORIZONTAL_ALIGNMENT_CENTER, 720, 34, Color("ffd890"))
-		draw_string(font, Vector2(0, 710), "Your saved game (day %d) will be erased." % save_day, HORIZONTAL_ALIGNMENT_CENTER, 720, 22,
+		_frame(Rect2(40, 600, 640, 280), Color(0.1, 0.07, 0.15, 0.96), Color("5a4670"), Color(1, 1, 1, 0.06), Color(0, 0, 0, 0.25), 12.0)
+		draw_string(font, Vector2(0, 666), "Start a new game?", HORIZONTAL_ALIGNMENT_CENTER, 720, 34, Color("ffd890"))
+		draw_string(font, Vector2(0, 716), "Your saved game (day %d) will be erased." % save_day, HORIZONTAL_ALIGNMENT_CENTER, 720, 22,
 			Data.parchment)
-		danger_box.draw(rid, YES)
+		_frame(YES, Color("b0413e"), Color("4a1a18"), Color(1, 0.7, 0.6, 0.35), Color(0, 0, 0, 0.2))
 		draw_string(font, YES.position + Vector2(0, 54), "New game", HORIZONTAL_ALIGNMENT_CENTER, YES.size.x, 28, Color.WHITE)
-		button_box.draw(rid, NO)
+		_frame(NO, Color("3a2d4c"), Color("1a1224"), Color(1, 1, 1, 0.12), Color(0, 0, 0, 0.2))
 		draw_string(font, NO.position + Vector2(0, 54), "Cancel", HORIZONTAL_ALIGNMENT_CENTER, NO.size.x, 28, Data.parchment)
 	else:
 		var list := buttons()
@@ -190,8 +235,13 @@ func _draw() -> void:
 			var r := button_rect(i)
 			var label: String = {"continue": "Continue  ·  Day %d" % save_day, "new": "New game", "choose": "Choose a night",
 				"guide": "Field Guide", "market": "Market"}[list[i]]
-			(main_box if i == 0 else button_box).draw(rid, r)
-			draw_string(font, r.position + Vector2(0, 54), label, HORIZONTAL_ALIGNMENT_CENTER, r.size.x, 30, Color.WHITE)
+			if i == 0:
+				Art.glow(self, r.get_center(), r.size.x * 0.62, Color(1.0, 0.72, 0.3, 0.14 + 0.06 * breathe))
+				_frame(r, Color("e8a53e"), Color("3a200e"), Color("ffe0a0"), Color("b8742a"), 10.0)
+				draw_string(font, r.position + Vector2(0, 66), label, HORIZONTAL_ALIGNMENT_CENTER, r.size.x, 36, Color("2e1808"))
+			else:
+				_frame(r, Color(0.2, 0.15, 0.27, 0.92), Color("0e0a16"), Color(0.55, 0.77, 0.76, 0.35), Color(0, 0, 0, 0.25))
+				draw_string(font, r.position + Vector2(0, 51), label, HORIZONTAL_ALIGNMENT_CENTER, r.size.x, 25, Color("e6dcc8"))
 
 	if note != "":
 		draw_string_outline(font, Vector2(20, 1236), note, HORIZONTAL_ALIGNMENT_LEFT, 560, 16, 5, Color(0, 0, 0, 0.7))
