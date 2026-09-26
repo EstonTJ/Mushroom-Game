@@ -345,7 +345,8 @@ func _enter_fortify() -> void:
 	var defense := Defense.new()
 	defense.night_over.connect(_on_night_over)
 	_set_phase("fortify", defense, "Day %d · Fortify" % Data.day,
-		"Tap a bottle, then a glowing spot. Moon Ward goes on the hut.", "Begin night", _start_night)
+		"Tonight's map: %s. Tap a bottle, then a glowing spot." % defense.LAYOUTS[defense.layout_for(Data.day)]["name"],
+		"Begin night", _start_night)
 
 
 func _start_night() -> void:

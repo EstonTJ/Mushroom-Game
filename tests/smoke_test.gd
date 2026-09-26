@@ -338,6 +338,66 @@ func _ready() -> void:
 	main.queue_free()
 	await frames(1)
 
+	# --- Night maps ---------------------------------------------------------------
+	var Def = load("res://scripts/defense.gd")
+	var maps_ok := true
+	var map_notes := []
+	for li in Def.LAYOUTS.size():
+		var lay: Dictionary = Def.LAYOUTS[li]
+		var cs := []
+		for pts in lay["paths"]:
+			var c := Curve2D.new()
+			for q in pts:
+				c.add_point(q)
+			cs.append(c)
+		for a_i in cs.size():
+			var ca: Curve2D = cs[a_i]
+			var end: Vector2 = lay["paths"][a_i][-1]
+			if end.distance_to(Def.HUT) > 110.0:
+				maps_ok = false
+				map_notes.append("%s path %d misses the hut" % [lay["name"], a_i])
+			for q in ca.get_baked_points():
+				if lay["pond"] != null and ((q - Vector2(lay["pond"])) / Vector2(170.0, 110.0)).length() < 1.0:
+					maps_ok = false
+					map_notes.append("%s path %d runs through the pond" % [lay["name"], a_i])
+					break
+			for b_i in range(a_i + 1, cs.size()):
+				var cb: Curve2D = cs[b_i]
+				for q in ca.get_baked_points():
+					if q.distance_to(Def.HUT) > 200.0 and cb.get_closest_point(q).distance_to(q) < 100.0:
+						maps_ok = false
+						map_notes.append("%s paths %d and %d come too close" % [lay["name"], a_i, b_i])
+						break
+	check(maps_ok, "every night map: paths reach the hut, miss the pond and stay apart %s" % str(map_notes))
+	var nights_differ := true
+	for n in range(1, Data.NIGHTS):
+		if Def.layout_for(n) == Def.layout_for(n + 1):
+			nights_differ = false
+	var early_two := true
+	for n in range(1, 6):
+		if Def.LAYOUTS[Def.layout_for(n)]["paths"].size() != 2:
+			early_two = false
+	check(nights_differ and early_two and Def.layout_for(1) == 0,
+		"each night uses a different map from the night before; nights 1-5 have two paths")
+
+	# Pace: slow in the mud and on bends, quicker on straights; flyers ignore it.
+	Data.day = 1
+	var dm = Def.new()
+	add_child(dm)
+	var mud: Dictionary = dm.muds[0]
+	var walker := {"kind": "mischief", "path": mud["path"], "offset": mud["offset"]}
+	var in_mud: float = dm.pace_at(walker)
+	var p0: PackedFloat32Array = dm.pace[0]
+	var lo := 9.0
+	var hi := 0.0
+	for v in p0:
+		lo = minf(lo, v)
+		hi = maxf(hi, v)
+	var flyer := {"kind": "moth", "path": mud["path"], "offset": mud["offset"]}
+	check(in_mud < 0.6 and hi > 1.1 and lo < 0.6 and dm.pace_at(flyer) == 1.0,
+		"creatures wade slowly through mud (%.2f), slow on bends and speed up on straights (%.2f to %.2f); flyers don't" % [in_mud, lo, hi])
+	dm.queue_free()
+
 	# --- Truffle Pig ------------------------------------------------------------
 	Data.upgrades.erase("truffle_pig")
 	var f_nopig = Forage.new()

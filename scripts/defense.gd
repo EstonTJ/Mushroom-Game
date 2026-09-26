@@ -16,7 +16,6 @@ const Baked = preload("res://scripts/baked.gd")
 
 const HUT := Vector2(360, 1000)
 const HUT_SIZE := 185.0
-const POND := Vector2(360, 250)
 const BAR_Y := 1130.0
 const CELL_W := 120.0
 const BAR_MAX := 6
@@ -25,8 +24,52 @@ const BONE_ICON := Vector2(566, 140)
 const LOOT_TIME := 0.7
 const NIGHT_FADE := 1.5
 const LANTERN_SIZE := 60.0
-const LEFT_PATH := [Vector2(40, 120), Vector2(180, 330), Vector2(110, 560), Vector2(250, 780), Vector2(330, 950)]
-const RIGHT_PATH := [Vector2(680, 120), Vector2(540, 320), Vector2(630, 560), Vector2(470, 780), Vector2(390, 950)]
+## Night maps. Each night uses one (see layout_for): the paths creatures walk
+## from the forest edge to the hut, and where the pond sits (null: no pond).
+## Every path gets three potion spots. Three-path maps start on night 6.
+const LAYOUTS := [
+	{"name": "Twin Trails", "pond": Vector2(360, 250), "paths": [
+		[Vector2(40, 120), Vector2(180, 330), Vector2(110, 560), Vector2(250, 780), Vector2(330, 950)],
+		[Vector2(680, 120), Vector2(540, 320), Vector2(630, 560), Vector2(470, 780), Vector2(390, 950)]]},
+	{"name": "Side Gates", "pond": Vector2(360, 250), "paths": [
+		[Vector2(-30, 430), Vector2(160, 390), Vector2(270, 570), Vector2(160, 770), Vector2(320, 950)],
+		[Vector2(750, 380), Vector2(560, 460), Vector2(610, 670), Vector2(470, 820), Vector2(400, 950)]]},
+	{"name": "Winding Wood", "pond": Vector2(360, 250), "paths": [
+		[Vector2(40, 120), Vector2(150, 340), Vector2(290, 460), Vector2(100, 630), Vector2(280, 790), Vector2(320, 950)],
+		[Vector2(680, 120), Vector2(570, 340), Vector2(440, 470), Vector2(620, 630), Vector2(440, 790), Vector2(400, 950)]]},
+	{"name": "Three Ways In", "pond": null, "paths": [
+		[Vector2(40, 120), Vector2(150, 400), Vector2(90, 650), Vector2(280, 955)],
+		[Vector2(360, 110), Vector2(430, 320), Vector2(330, 540), Vector2(390, 740), Vector2(360, 900)],
+		[Vector2(680, 120), Vector2(590, 400), Vector2(650, 650), Vector2(440, 955)]]},
+	{"name": "Pond Loop", "pond": Vector2(360, 360), "paths": [
+		[Vector2(250, 110), Vector2(160, 290), Vector2(200, 500), Vector2(110, 710), Vector2(310, 950)],
+		[Vector2(470, 110), Vector2(560, 290), Vector2(520, 500), Vector2(610, 710), Vector2(410, 950)]]},
+	{"name": "Crossroads", "pond": null, "paths": [
+		[Vector2(-30, 300), Vector2(190, 380), Vector2(110, 610), Vector2(290, 955)],
+		[Vector2(360, 110), Vector2(290, 300), Vector2(410, 520), Vector2(330, 740), Vector2(360, 900)],
+		[Vector2(750, 300), Vector2(530, 380), Vector2(610, 610), Vector2(430, 955)]]},
+]
+## Which map each night uses: the two-path maps for the first five nights,
+## then all six in turn. Neighbouring nights always differ.
+const EARLY_LAYOUTS := [0, 1, 4, 2, 1]
+const LATE_LAYOUTS := [3, 0, 5, 4, 1, 2]
+
+
+## Pace along the paths: ground creatures slow on bends (down to CORNER_SLOW
+## on the sharpest), speed up a little on straights (STRAIGHT_FAST), and wade
+## slowly through one mud wallow per path (MUD_SLOW at its middle). Flyers
+## ignore all of it. Slow places are where area potions pay off.
+const PACE_STEP := 8.0
+const CORNER_SLOW := 0.55
+const STRAIGHT_FAST := 1.2
+const MUD_SLOW := 0.45
+const MUD_R := 48.0
+
+
+static func layout_for(night: int) -> int:
+	if night <= EARLY_LAYOUTS.size():
+		return EARLY_LAYOUTS[maxi(night, 1) - 1]
+	return LATE_LAYOUTS[(night - EARLY_LAYOUTS.size() - 1) % LATE_LAYOUTS.size()]
 
 
 ## One drawing layer. It calls back into this script so all drawing stays here.
@@ -42,6 +85,12 @@ class Layer extends Node2D:
 
 
 var curves: Array[Curve2D] = []
+## Tonight's map (one of LAYOUTS) and its pond, if it has one.
+var layout: Dictionary
+var pond = null
+## Per path: pace multipliers every PACE_STEP pixels, and the mud wallows.
+var pace := []
+var muds := []
 var slots := []
 var mode := "fortify"
 var selected := ""
@@ -115,9 +164,12 @@ func _ready() -> void:
 			queue.append(kind)
 	queue.shuffle()
 	cfg["count"] = queue.size()
-	curves.append(_make_curve(LEFT_PATH))
-	curves.append(_make_curve(RIGHT_PATH))
-	for path_i in 2:
+	layout = LAYOUTS[layout_for(Data.day)]
+	pond = layout["pond"]
+	for pts in layout["paths"]:
+		curves.append(_make_curve(pts))
+	_build_pace()
+	for path_i in curves.size():
 		var c := curves[path_i]
 		var length := c.get_baked_length()
 		for f in [0.3, 0.55, 0.8]:
@@ -165,6 +217,53 @@ func _box(bg: Color, border: Color, radius: int) -> StyleBoxFlat:
 	return b
 
 
+func _build_pace() -> void:
+	for path_i in curves.size():
+		var c := curves[path_i]
+		var length := c.get_baked_length()
+		var n := int(ceil(length / PACE_STEP)) + 1
+		var raw := PackedFloat32Array()
+		for i in n:
+			var d := i * PACE_STEP
+			var turn := 0.0
+			if d > 24.0 and d < length - 24.0:
+				var before := c.sample_baked(d) - c.sample_baked(d - 24.0)
+				var after := c.sample_baked(d + 24.0) - c.sample_baked(d)
+				turn = absf(before.angle_to(after))
+			raw.append(lerpf(STRAIGHT_FAST, CORNER_SLOW, clampf(turn / 0.8, 0.0, 1.0)))
+		# Ease in and out of bends rather than snapping.
+		var smooth := PackedFloat32Array()
+		for i in n:
+			var sum := 0.0
+			var cnt := 0
+			for j in range(maxi(0, i - 4), mini(n, i + 5)):
+				sum += raw[j]
+				cnt += 1
+			smooth.append(sum / cnt)
+		# One mud wallow on the straightest stretch between 38% and 68% of the way.
+		var best := int(n * 0.38)
+		for i in range(int(n * 0.38), int(n * 0.68)):
+			if smooth[i] > smooth[best]:
+				best = i
+		var mud_d := best * PACE_STEP
+		muds.append({"path": path_i, "offset": mud_d, "pos": c.sample_baked(mud_d),
+			"dir": (c.sample_baked(mud_d + 10.0) - c.sample_baked(mud_d - 10.0)).normalized()})
+		for i in n:
+			var near := absf(i * PACE_STEP - mud_d)
+			if near < MUD_R:
+				smooth[i] = minf(smooth[i], lerpf(MUD_SLOW, 1.0, pow(near / MUD_R, 2.0)))
+		pace.append(smooth)
+
+
+## How fast a creature moves at its spot on the path (1.0 = its normal speed).
+func pace_at(e: Dictionary) -> float:
+	var info := _info(e)
+	if info["flying"]:
+		return 1.0
+	var p: PackedFloat32Array = pace[e["path"]]
+	return p[clampi(int(float(e["offset"]) / PACE_STEP), 0, p.size() - 1)]
+
+
 func _make_curve(points: Array) -> Curve2D:
 	var c := Curve2D.new()
 	var n := points.size()
@@ -186,7 +285,9 @@ func _near_path(p: Vector2, dist: float) -> bool:
 
 
 func _in_pond(p: Vector2, pad: float) -> bool:
-	return ((p - POND) / Vector2(128.0 + pad, 68.0 + pad)).length() < 1.0
+	if pond == null:
+		return false
+	return ((p - Vector2(pond)) / Vector2(128.0 + pad, 68.0 + pad)).length() < 1.0
 
 
 func _beside(c: Curve2D, f: float, side: float, dist: float) -> Vector2:
@@ -276,9 +377,9 @@ func _build_scenery() -> void:
 	trees.append(_tree(Vector2(-5, 110), rng))
 	trees.append(_tree(Vector2(725, 110), rng))
 
-	for i in 14:
+	for i in (14 if pond != null else 0):
 		var ang := rng.randf_range(-0.3, PI + 0.3)
-		reeds.append({"pos": POND + Vector2(cos(ang) * 122, sin(ang) * 60), "h": rng.randf_range(18, 32),
+		reeds.append({"pos": Vector2(pond) + Vector2(cos(ang) * 122, sin(ang) * 60), "h": rng.randf_range(18, 32),
 			"lean": rng.randf_range(-5, 5)})
 
 	for i in 18:
@@ -353,14 +454,14 @@ func _night_step(delta: float) -> void:
 			spawn_timer = 0.35 if group_left > 0 else cfg["interval"] * randf_range(1.2, 2.0)
 			if kind == "scuttler":
 				spawn_timer = minf(spawn_timer, cfg["interval"] * 0.45)
-			enemies.append(_make_enemy(kind, randi() % 2))
+			enemies.append(_make_enemy(kind, randi() % curves.size()))
 			spawned += 1
 			if not Data.seen_creatures.has(kind):
 				Data.seen_creatures[kind] = true
 				intro = {"kind": kind, "t": 0.0}
 	if cfg.get("boss", "") != "" and not boss_spawned and spawned >= cfg["count"] / 2:
 		boss_spawned = true
-		boss_ref = _make_enemy(cfg["boss"], randi() % 2)
+		boss_ref = _make_enemy(cfg["boss"], randi() % curves.size())
 		enemies.append(boss_ref)
 		extra += 1
 		intro = {"kind": cfg["boss"], "t": 0.0}
@@ -439,7 +540,7 @@ func _night_step(delta: float) -> void:
 					spawned_children.append(minion)
 				_burst(e["pos"], Color(0.8, 0.6, 1.0), 14, 150.0)
 		var c: Curve2D = curves[e["path"]]
-		e["offset"] = maxf(0.0, e["offset"] + e["speed"] * slow * delta)
+		e["offset"] = maxf(0.0, e["offset"] + e["speed"] * slow * pace_at(e) * delta)
 		if e["offset"] >= c.get_baked_length():
 			var blocked := 0
 			var hits := 0
@@ -826,6 +927,22 @@ func _paint_ground(ci: CanvasItem) -> void:
 			ci.draw_circle(pts[k], 35, dirt)
 		for k in range(0, pts.size(), 2):
 			ci.draw_circle(pts[k], 16, worn)
+	# Mud wallows: a dark puddle across the path with a few hoof-prints.
+	var mud := _c(Color("5a4630"), Color("2e2420"))
+	var wet := _c(Color("6e5a44"), Color("3a3230"))
+	for m in muds:
+		var mp: Vector2 = m["pos"]
+		var along: Vector2 = m["dir"]
+		var across := along.orthogonal()
+		for k in 5:
+			var off := along * (-36.0 + k * 18.0) + across * sin(k * 2.1) * 6.0
+			ci.draw_circle(mp + off, 27.0 - absf(k - 2.0) * 3.0, mud)
+		for k in 3:
+			ci.draw_circle(mp + along * (-18.0 + k * 18.0) + across * (4.0 - k * 3.0), 13.0, wet)
+		ci.draw_colored_polygon(Art.ellipse(mp + along * -10.0 + Vector2(-4, -6), 12, 4, 12),
+			Art.fade(Color(1, 1, 1), 0.15 + 0.12 * (1.0 - night_amt)))
+		for k in 4:
+			ci.draw_circle(mp + along * (-30.0 + k * 20.0) + across * (14.0 if k % 2 == 0 else -14.0), 3.5, mud.darkened(0.3))
 	for pb in pebbles:
 		var r: float = pb["r"]
 		ci.draw_colored_polygon(Art.ellipse(pb["pos"], r * 1.2, r * 0.8, 10), stone_col.darkened(0.1))
@@ -854,21 +971,24 @@ func _paint_ground(ci: CanvasItem) -> void:
 
 
 func _paint_pond(ci: CanvasItem) -> void:
-	ci.draw_colored_polygon(Art.ellipse(POND + Vector2(0, 4), 128, 68, 40), _c(Color("4a4b3e"), Color("1d2320")))
+	if pond == null:
+		return
+	var pond_at := Vector2(pond)
+	ci.draw_colored_polygon(Art.ellipse(pond_at + Vector2(0, 4), 128, 68, 40), _c(Color("4a4b3e"), Color("1d2320")))
 	var water := _c(Color("46607e"), Color("15263f"))
-	ci.draw_colored_polygon(Art.ellipse(POND, 118, 58, 40), water)
-	ci.draw_colored_polygon(Art.ellipse(POND + Vector2(0, 8), 100, 44, 40), water.darkened(0.2))
+	ci.draw_colored_polygon(Art.ellipse(pond_at, 118, 58, 40), water)
+	ci.draw_colored_polygon(Art.ellipse(pond_at + Vector2(0, 8), 100, 44, 40), water.darkened(0.2))
 
 	var pad_col := _c(Color("5f8a58"), Color("2c4a38"))
 	for lp in [[Vector2(-70, 14), 16.0], [Vector2(62, -20), 13.0], [Vector2(84, 18), 10.0]]:
-		var c: Vector2 = POND + lp[0]
+		var c: Vector2 = pond_at + lp[0]
 		var r: float = lp[1]
 		var pad := PackedVector2Array([c])
 		for i in 15:
 			var ang := 0.45 + (TAU - 0.6) * i / 14.0
 			pad.append(c + Vector2(cos(ang) * r, sin(ang) * r * 0.7))
 		ci.draw_colored_polygon(pad, pad_col)
-	var flower := POND + Vector2(-72, 10)
+	var flower := pond_at + Vector2(-72, 10)
 	for k in 5:
 		ci.draw_circle(flower + Vector2.from_angle(k * TAU / 5.0) * 4.0, 3.5, _c(Color("f3b3cf"), Color("b07a98")))
 	ci.draw_circle(flower, 2.5, Color("ffe08a"))
@@ -887,7 +1007,8 @@ func _paint_light_under(ci: CanvasItem) -> void:
 	Art.glow(ci, HUT + Vector2(0, -20), 300, Art.fade(Data.lantern, (0.16 + 0.22 * n) * flicker))
 	for l in lanterns:
 		Art.glow(ci, Art.lantern_lamp(l, LANTERN_SIZE) + Vector2(0, 40), 150, Art.fade(Data.lantern, (0.1 + 0.22 * n) * flicker))
-	Art.glow(ci, POND + Vector2(22, -6), 110, Color(0.8, 0.85, 1.0, 0.05 + 0.12 * n))
+	if pond != null:
+		Art.glow(ci, Vector2(pond) + Vector2(22, -6), 110, Color(0.8, 0.85, 1.0, 0.05 + 0.12 * n))
 	for cl in clusters:
 		if cl["glow"]:
 			var pulse := 0.8 + 0.2 * sin(t * 2.0 + float(cl["pos"].x))
@@ -922,11 +1043,12 @@ func _paint_objects(ci: CanvasItem) -> void:
 	var font := ThemeDB.fallback_font
 
 	# Moon reflection with slow ripples.
-	var moon := POND + Vector2(22 + sin(t * 1.5) * 3.0, -6)
-	ci.draw_colored_polygon(Art.ellipse(moon, 26, 12, 24), Color(1, 0.97, 0.85, 0.3 + 0.45 * n))
-	for k in 2:
-		var rr := fmod(t * 12.0 + k * 20.0, 40.0)
-		Art.outline(ci, Art.ellipse(moon, 26 + rr, 12 + rr * 0.45, 32), Color(1, 0.97, 0.85, (1.0 - rr / 40.0) * 0.25), 1.5)
+	if pond != null:
+		var moon := Vector2(pond) + Vector2(22 + sin(t * 1.5) * 3.0, -6)
+		ci.draw_colored_polygon(Art.ellipse(moon, 26, 12, 24), Color(1, 0.97, 0.85, 0.3 + 0.45 * n))
+		for k in 2:
+			var rr := fmod(t * 12.0 + k * 20.0, 40.0)
+			Art.outline(ci, Art.ellipse(moon, 26 + rr, 12 + rr * 0.45, 32), Color(1, 0.97, 0.85, (1.0 - rr / 40.0) * 0.25), 1.5)
 
 	for i in slots.size():
 		var s: Dictionary = slots[i]
