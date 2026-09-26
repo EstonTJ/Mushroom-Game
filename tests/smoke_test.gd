@@ -145,9 +145,30 @@ func _ready() -> void:
 	check(Data.bottles["syrup"] == 1 and brew.results.is_empty(), "early pops still brew 1 bottle (Sticky Syrup)")
 	brew_pair(brew, "fly_agaric", "chanterelle", "none")
 	check(Data.bottles["ember"] == 1 and Data.discovered.has("ember"), "bubbles left to burst still brew 1 bottle (Ember Burst)")
+	# Bellows: slower bubbles and an earlier Perfect window.
+	check(brew.bubble_time() == brew.BUBBLE_TIME and brew.perfect_from() == brew.PERFECT_FROM, "no Bellows: normal bubbles")
+	Data.upgrades["bellows"] = true
+	check(brew.bubble_time() > brew.BUBBLE_TIME and brew.perfect_from() < brew.PERFECT_FROM,
+		"Bellows: bubbles swell slower and Perfect starts earlier")
+	Data.upgrades.erase("bellows")
+	# Everburning Coals: some Perfect brews make 3 bottles.
+	Data.upgrades["everburning_coals"] = true
+	seed(4)
+	var made_counts := {}
+	for i in 12:
+		Data.inventory["puffball"] = 4
+		Data.inventory["fly_agaric"] = 4
+		var before_spore: int = Data.bottles["spore"]
+		brew_pair(brew, "puffball", "fly_agaric", "perfect")
+		made_counts[Data.bottles["spore"] - before_spore] = true
+	check(made_counts.has(3) and made_counts.has(2) and made_counts.size() == 2,
+		"Everburning Coals: a Perfect brew sometimes makes 3 bottles, otherwise 2")
+	Data.upgrades.erase("everburning_coals")
+	Data.inventory["puffball"] = 2
+	Data.bottles["spore"] = 2
 	brew_pair(brew, "puffball", "puffball", "perfect")
 	await frames(2)
-	check(Data.inventory["puffball"] == 0, "sludge used up its mushrooms (puffball 4 -> 0)")
+	check(Data.inventory["puffball"] == 0, "sludge used up its mushrooms (puffball 2 -> 0)")
 	brew._on_press(brew.slot_center(Data.ingredient_order.find("ghost_fungus")))
 	check(brew.dragging == "", "a locked mushroom's jar can't be used")
 	brew._on_release(brew.POT)
@@ -336,19 +357,88 @@ func _ready() -> void:
 			break
 	check(fp.items.is_empty() and Data.inventory["chanterelle"] == ch_before + 1 and fp.pig["rest"] > 0.0,
 		"the Truffle Pig trots over, gathers the mushroom, then rests")
+	# Golden Snout: the same walk takes fewer steps and the rest is shorter.
+	var plain_steps := 0
+	fp.items = [{"id": "chanterelle", "pos": Vector2(600, 300), "age": 1.0, "life": 99.0, "ph": 0.0}]
+	fp.pig["pos"] = Vector2(120, 1020)
+	fp.pig["rest"] = 0.0
+	while not fp.items.is_empty() and plain_steps < 400:
+		fp.pig_step(0.05)
+		plain_steps += 1
+	Data.upgrades["golden_snout"] = true
+	var snout_steps := 0
+	fp.items = [{"id": "chanterelle", "pos": Vector2(600, 300), "age": 1.0, "life": 99.0, "ph": 0.0}]
+	fp.pig["pos"] = Vector2(120, 1020)
+	fp.pig["rest"] = 0.0
+	while not fp.items.is_empty() and snout_steps < 400:
+		fp.pig_step(0.05)
+		snout_steps += 1
+	check(snout_steps < plain_steps * 0.75 and fp.pig["rest"] < fp.PIG_REST,
+		"the Golden Snout pig is faster (%d steps vs %d) and rests less" % [snout_steps, plain_steps])
+	Data.upgrades.erase("golden_snout")
 	fp.queue_free()
 	Data.upgrades.erase("truffle_pig")
+
+	# --- Forest gear ------------------------------------------------------------
+	var f_plain = Forage.new()
+	add_child(f_plain)
+	var plain_hp: Array = f_plain.obstacles.map(func(o): return o["max"] - (0 if o["kind"] == "rock" else 1))
+	check(f_plain.time_left == 20.0 and plain_hp.all(func(h): return h == 3), "without gear: a 20 s walk, rocks 3 taps, stumps 4")
+	f_plain.queue_free()
+	Data.upgrades["foraging_basket"] = true
+	Data.upgrades["rock_hammer"] = true
+	var f_gear = Forage.new()
+	add_child(f_gear)
+	var gear_hp: Array = f_gear.obstacles.map(func(o): return o["max"] - (0 if o["kind"] == "rock" else 1))
+	check(f_gear.time_left == 25.0 and gear_hp.all(func(h): return h == 2),
+		"Foraging Basket makes the walk 25 s; Rock Hammer takes a tap off rocks and stumps")
+	f_gear.queue_free()
+	Data.upgrades.erase("foraging_basket")
+	Data.upgrades.erase("rock_hammer")
+	# Foxfire Lantern: a rare mushroom shimmers first, then appears.
+	Data.upgrades["foxfire_lantern"] = true
+	var f_fox = Forage.new()
+	add_child(f_fox)
+	await frames(1)
+	f_fox.items.clear()
+	f_fox.pending.clear()
+	f_fox.rare_spawned = true
+	var rare_id := ""
+	for id in Data.ingredient_order:
+		if Data.is_unlocked(id) and f_fox.is_rare(id):
+			rare_id = id
+	var shimmered := false
+	if rare_id != "":
+		f_fox.set_process(false)
+		f_fox.spawn_timer = 99.0
+		f_fox.pending.append({"id": rare_id, "pos": Vector2(360, 600), "life": 4.0, "t": f_fox.FOXFIRE_LEAD})
+		f_fox._process(0.5)
+		shimmered = f_fox.items.is_empty() and f_fox.pending.size() == 1
+		f_fox._process(1.0)
+	check(rare_id == "" or (shimmered and f_fox.items.size() == 1 and f_fox.items[0]["id"] == rare_id and f_fox.pending.is_empty()),
+		"Foxfire Lantern: a rare mushroom shimmers for a moment, then appears (%s)" % rare_id)
+	check(f_fox.is_rare("ghost_fungus") and not f_fox.is_rare("puffball"), "the ghost fungus counts as rare; the puffball doesn't")
+	f_fox.queue_free()
+	Data.upgrades.erase("foxfire_lantern")
 
 	# The market pages when there are more wares than fit.
 	var Shop3 = load("res://scripts/shop.gd")
 	var sh3 = Shop3.new()
 	add_child(sh3)
-	check(sh3.pages() == 2 and sh3.page_items() == ["bone_mortar", "bone_appetit", "batch_brewer"], "the market shows 3 wares a page")
+	check(sh3.pages() == 4 and sh3.page_items() == ["bone_mortar", "bellows", "rock_hammer"], "the market shows 3 wares a page")
 	sh3.tap(sh3.PAGE_NEXT.get_center())
-	check(sh3.page == 1 and sh3.page_items() == ["truffle_pig"], "the arrow turns to the page with the Truffle Pig")
+	sh3.tap(sh3.PAGE_NEXT.get_center())
+	check(sh3.page == 2 and sh3.page_items() == ["truffle_pig", "golden_snout", "batch_brewer"], "the arrows turn to the page with the Truffle Pig")
 	Data.coins = 80
 	sh3.tap(sh3.buy_rect(0).get_center())
 	check(Data.upgrades.has("truffle_pig") and Data.coins == 5, "the Truffle Pig costs 75 coins")
+	Data.coins = 200
+	Data.upgrades.erase("truffle_pig")
+	check(not Data.buy("golden_snout") and Data.coins == 200, "the Golden Snout needs the Truffle Pig first")
+	Data.upgrades["truffle_pig"] = true
+	check(Data.buy("golden_snout") and Data.coins == 135, "the Golden Snout costs 65 coins")
+	Data.upgrades.erase("truffle_pig")
+	Data.upgrades.erase("golden_snout")
 	sh3.queue_free()
 	Data.upgrades.erase("truffle_pig")
 

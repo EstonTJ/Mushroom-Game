@@ -5,7 +5,7 @@ extends Node
 
 ## Shown on the title screen and in the menu, so players can tell whether
 ## their browser has the latest update. Bump it with each release.
-const VERSION := "0.22"
+const VERSION := "0.23"
 const HUT_HP := 5
 const NIGHTS := 40
 ## When mushrooms unlock, in ingredient_order: three on night 1, one more on
@@ -249,12 +249,25 @@ var shop_items := {
 		"desc": "Never forget a bone again. Drops a monster bone into every brew by itself, as long as you have one. Switch it off at the bone bowl to save bones."},
 	"batch_brewer": {"name": "Loader of Mass Production", "price": 100,
 		"desc": "Brew up to 5 potions at once. Set the batch dial by the cauldron: each potion in the batch uses one of each mushroom (and a bone, if one's in)."},
+	"bellows": {"name": "Bellows", "price": 40,
+		"desc": "A steady breath of air keeps the fire even. Bubbles swell more slowly and the Perfect window is wider, so Perfect pops come easier."},
+	"everburning_coals": {"name": "Everburning Coals", "price": 60,
+		"desc": "Coals that never go out. When every bubble in a brew pops Perfect, there's a one-in-two chance the coals flare and you get three bottles instead of two."},
+	"foraging_basket": {"name": "Foraging Basket", "price": 50, "kind": "Forest gear",
+		"desc": "A roomier basket means a longer walk: forest foraging lasts 25 seconds instead of 20."},
+	"rock_hammer": {"name": "Rock Hammer", "price": 45, "kind": "Forest gear",
+		"desc": "A proper geologist's hammer. Rocks and stumps break with one fewer tap."},
+	"foxfire_lantern": {"name": "Foxfire Lantern", "price": 100, "kind": "Forest gear",
+		"desc": "Foxfire is the old name for the glow of fungi in rotting wood. Rare mushrooms shimmer green a moment before they appear, and so do rocks and stumps hiding one."},
+	"golden_snout": {"name": "Golden Snout", "price": 65, "kind": "Forest helper", "requires": "truffle_pig",
+		"desc": "A golden nose-ring for your Truffle Pig. It trots faster and celebrates for less time between finds."},
 	"truffle_pig": {"name": "Truffle Pig", "price": 75, "kind": "Forest helper",
 		"desc": "A keen-nosed pig joins your forest walks. It sniffs out the nearest mushroom and gathers it for you, then pauses to celebrate. Rocks and stumps are still up to you."},
 }
 ## The most potions one batch can make (with the Batch Brewer).
 const MAX_BATCH := 5
-var shop_order := ["bone_mortar", "bone_appetit", "batch_brewer", "truffle_pig"]
+var shop_order := ["bone_mortar", "bellows", "rock_hammer", "foraging_basket", "bone_appetit", "everburning_coals",
+	"truffle_pig", "golden_snout", "batch_brewer", "foxfire_lantern"]
 
 ## How much stronger an Empowered potion (one brewed with a monster bone) is.
 const EMPOWER := {"radius": 1.3, "duration": 1.4, "dps": 1.5, "burst": 1.5, "ward": 2, "heal": 1}

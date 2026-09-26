@@ -17,6 +17,11 @@ const BUBBLE_TIME := 1.3
 ## A tap counts as Perfect while the bubble is this far through its growth.
 const PERFECT_FROM := 0.72
 const PERFECT_TO := 1.0
+## With the Bellows: bubbles take longer to swell and Perfect starts earlier.
+const BELLOWS_TIME := 1.75
+const BELLOWS_FROM := 0.62
+## With the Everburning Coals: chance an all-Perfect brew makes a third bottle.
+const COALS_CHANCE := 0.5
 const BUBBLE_GAP := 0.45
 const SLOT_W := 90.0
 const SHELF_TOP := 128.0
@@ -290,9 +295,17 @@ func _bubble_step(delta: float) -> void:
 		if bubble_gap <= 0.0:
 			bubble = {"f": 0.0, "pos": SURFACE + Vector2(randf_range(-80, 80), -6), "seed": randf() * TAU}
 	else:
-		bubble["f"] += delta / BUBBLE_TIME
+		bubble["f"] += delta / bubble_time()
 		if bubble["f"] >= 1.08:
 			_pop_bubble(false)
+
+
+func bubble_time() -> float:
+	return BELLOWS_TIME if Data.upgrades.has("bellows") else BUBBLE_TIME
+
+
+func perfect_from() -> float:
+	return BELLOWS_FROM if Data.upgrades.has("bellows") else PERFECT_FROM
 
 
 func bubble_radius(f: float) -> float:
@@ -310,7 +323,7 @@ func _pop_bubble(tapped: bool) -> void:
 	var f: float = bubble["f"]
 	var at := bubble_pos(bubble)
 	var r := bubble_radius(f)
-	var perfect := tapped and f >= PERFECT_FROM and f <= PERFECT_TO + 0.08
+	var perfect := tapped and f >= perfect_from() and f <= PERFECT_TO + 0.08
 	var result := "perfect" if perfect else ("good" if tapped else "missed")
 	results.append(result)
 	if perfect:
@@ -350,6 +363,9 @@ func _finish_brew() -> void:
 	var key := id + ("+" if empowered else "")
 	var info: Dictionary = Data.potion_stats(key)
 	var made := 2 if flawless else 1
+	var flare := flawless and Data.upgrades.has("everburning_coals") and randf() < COALS_CHANCE
+	if flare:
+		made = 3
 	# Each extra potion in the batch takes another bone while they last.
 	var plus_count := 0
 	if empowered:
@@ -367,9 +383,11 @@ func _finish_brew() -> void:
 	if count > 1:
 		what = "Batch of %d! +%d %s%s" % [count, count * made, Data.potions[id]["name"],
 			(" (%d empowered)" % (plus_count * made)) if plus_count > 0 else ""]
+	if flare:
+		what = "The coals flare! +%d %s" % [count * made, Data.potions[id]["name"]]
 	if not Data.discovered.has(id):
 		Data.discovered[id] = true
-		what = ("Perfect! New recipe: %s x2" if flawless else "New recipe: %s!") % info["name"]
+		what = ("Perfect! New recipe: %s x%d" % [info["name"], made]) if flawless else ("New recipe: %s!" % info["name"])
 		if count > 1:
 			what = "New recipe: %s! Batch +%d" % [info["name"], count * made]
 	_popup(what, info["color"].lightened(0.25))
@@ -791,8 +809,8 @@ func _paint_bubble(ci: CanvasItem) -> void:
 	var f: float = bubble["f"]
 	var at := bubble_pos(bubble)
 	var r := bubble_radius(f)
-	var target := bubble_radius((PERFECT_FROM + PERFECT_TO) * 0.5)
-	var in_window := f >= PERFECT_FROM and f <= PERFECT_TO + 0.08
+	var target := bubble_radius((perfect_from() + PERFECT_TO) * 0.5)
+	var in_window := f >= perfect_from() and f <= PERFECT_TO + 0.08
 	var ring_col := Color("ffd35a") if in_window else Color(1, 1, 1, 0.45)
 	for k in 16:
 		var a0 := TAU * k / 16.0 + t * 0.6
@@ -814,7 +832,7 @@ func _paint_light_over(ci: CanvasItem) -> void:
 	Art.glow(ci, CANDLE + Vector2(0, -12), 22, Color(1.0, 0.85, 0.5, 0.7 * _flicker(15.0)))
 	if not bubble.is_empty():
 		var f: float = bubble["f"]
-		var in_window := f >= PERFECT_FROM and f <= PERFECT_TO + 0.08
+		var in_window := f >= perfect_from() and f <= PERFECT_TO + 0.08
 		Art.glow(ci, bubble_pos(bubble), bubble_radius(f) * 1.6, Art.fade(Color("ffd35a") if in_window else liquid.lightened(0.3), 0.35))
 	for p in particles:
 		var kind: String = p["kind"]

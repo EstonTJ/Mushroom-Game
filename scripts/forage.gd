@@ -21,6 +21,10 @@ const FLY_TIME := 0.5
 ## Under a rock or stump: a mushroom (else a beetle), and how often it's the
 ## glowing ghost fungus once that's unlocked.
 const HIDDEN_MUSHROOM_CHANCE := 0.85
+## Upgrades: seconds the Foraging Basket adds; how long a rare mushroom
+## shimmers before appearing (Foxfire Lantern).
+const BASKET_BONUS := 5.0
+const FOXFIRE_LEAD := 1.2
 const HIDDEN_GHOST_CHANCE := 0.25
 const ROCK_STYLES := ["boulder", "mossy", "cairn", "slab"]
 const STUMP_STYLES := ["stump", "bracket", "log", "snag"]
@@ -40,7 +44,11 @@ class Layer extends Node2D:
 		last_usec = Time.get_ticks_usec() - start
 
 
+## Walk length: DURATION, or longer with the Foraging Basket.
+var duration := DURATION
 var time_left := DURATION
+## Rare mushrooms waiting to appear, shimmering first (Foxfire Lantern).
+var pending := []
 var spawn_timer := 0.0
 var items := []
 var popups := []
@@ -89,6 +97,9 @@ var fill_box: StyleBoxFlat
 
 
 func _ready() -> void:
+	if Data.upgrades.has("foraging_basket"):
+		duration = DURATION + BASKET_BONUS
+	time_left = duration
 	_build_scenery()
 	track_box = StyleBoxFlat.new()
 	track_box.bg_color = Color(0, 0, 0, 0.3)
@@ -268,7 +279,7 @@ func _place_obstacles() -> void:
 			continue
 		var kind := "rock" if randf() < 0.5 else "stump"
 		var style: String = (ROCK_STYLES if kind == "rock" else STUMP_STYLES).pick_random()
-		var hp := 3 if kind == "rock" else 4
+		var hp := (3 if kind == "rock" else 4) - (1 if Data.upgrades.has("rock_hammer") else 0)
 		var hidden := _pick_hidden() if randf() < HIDDEN_MUSHROOM_CHANCE else "beetle"
 		obstacles.append({"kind": kind, "style": style, "pos": p, "hp": hp, "max": hp, "shake": 0.0, "hidden": hidden,
 			"peek": hidden != "beetle" and randf() < 0.5, "seed": randf() * 10.0, "gone": false})
@@ -336,10 +347,19 @@ func _process(delta: float) -> void:
 					0.6, 10.0, Color(0.55, 0.45, 0.3, 0.4), "dust")
 	items = kept
 
+	var waiting := []
+	for pd in pending:
+		pd["t"] -= delta
+		if pd["t"] <= 0.0 and not done:
+			_add_item(pd["id"], pd["pos"], pd["life"])
+		elif not done:
+			waiting.append(pd)
+	pending = waiting
+
 	if not done:
 		time_left -= delta
 		spawn_timer -= delta
-		if spawn_timer <= 0.0 and items.size() < MAX_ON_SCREEN:
+		if spawn_timer <= 0.0 and items.size() + pending.size() < MAX_ON_SCREEN:
 			spawn_timer = SPAWN_EVERY
 			_spawn()
 		if time_left <= 0.0:
@@ -377,7 +397,7 @@ func _free_spot(p: Vector2) -> bool:
 	for o in obstacles:
 		if not o["gone"] and o["pos"].distance_to(p) < 90.0:
 			return false
-	for it in items:
+	for it in items + pending:
 		if it["pos"].distance_to(p) < 120.0:
 			return false
 	return true
@@ -395,7 +415,37 @@ func _spawn() -> void:
 		if _free_spot(pos):
 			break
 		pos = Vector2(randf_range(90, 630), randf_range(210, 1040))
+	if Data.upgrades.has("foxfire_lantern") and is_rare(id):
+		pending.append({"id": id, "pos": pos, "life": life, "t": FOXFIRE_LEAD})
+		return
 	_add_item(id, pos, life)
+
+
+## Foxfire Lantern: a green shimmer where a rare mushroom is about to pop up
+## (brighter as it nears), and a soft flicker round rocks and stumps hiding one.
+func _paint_foxfire(ci: CanvasItem) -> void:
+	var fox := Color(0.45, 1.0, 0.6)
+	for pd in pending:
+		var k := 1.0 - clampf(pd["t"] / FOXFIRE_LEAD, 0.0, 1.0)
+		Art.glow(ci, pd["pos"] + Vector2(0, -10), 70.0 + 50.0 * k, Art.fade(fox, 0.55 + 0.4 * k))
+		for j in 3:
+			var ang := t * 3.0 + j * TAU / 3.0
+			Art.sparkle(ci, pd["pos"] + Vector2(cos(ang) * 34.0, sin(ang) * 16.0 - 14.0), 8.0 + 5.0 * k, Art.fade(fox, 1.0))
+	if not Data.upgrades.has("foxfire_lantern"):
+		return
+	for o in obstacles:
+		if o["gone"] or o["hidden"] == "beetle" or not is_rare(o["hidden"]):
+			continue
+		var flick := 0.5 + 0.5 * sin(t * 2.3 + o["seed"] * 3.0)
+		Art.glow(ci, o["pos"] + Vector2(0, 10), 95, Art.fade(fox, 0.3 + 0.25 * flick))
+		if flick > 0.8:
+			Art.sparkle(ci, o["pos"] + Vector2(-30, -30), 7.0, Art.fade(fox, 1.0))
+
+
+## Rare for the Foxfire Lantern: the ghost fungus and the least common kinds.
+static func is_rare(id: String) -> bool:
+	var w := float(Data.ingredients[id]["weight"])
+	return w <= 1.5
 
 
 func _add_item(id: String, pos: Vector2, life: float) -> void:
@@ -442,6 +492,9 @@ func _unhandled_input(event: InputEvent) -> void:
 const PIG_SPEED := 130.0
 const PIG_REACH := 36.0
 const PIG_REST := 0.9
+## With the Golden Snout.
+const SNOUT_SPEED := 200.0
+const SNOUT_REST := 0.45
 
 
 ## The pig trots to the nearest mushroom and gathers it, then rests a moment.
@@ -462,11 +515,12 @@ func pig_step(delta: float) -> void:
 	var to := target - Vector2(pig["pos"])
 	if to.length() > 4.0:
 		pig["face"] = 1.0 if items[best]["pos"].x > pig["pos"].x else -1.0
-		pig["pos"] = Vector2(pig["pos"]) + to.normalized() * minf(PIG_SPEED * delta, to.length())
+		var speed := SNOUT_SPEED if Data.upgrades.has("golden_snout") else PIG_SPEED
+		pig["pos"] = Vector2(pig["pos"]) + to.normalized() * minf(speed * delta, to.length())
 		pig["walk"] += delta
 	if items[best]["pos"].distance_to(pig["pos"] + Vector2(pig["face"] * 30.0, -16)) < PIG_REACH + 10.0:
 		_collect(best, "Oink! +1 ")
-		pig["rest"] = PIG_REST
+		pig["rest"] = SNOUT_REST if Data.upgrades.has("golden_snout") else PIG_REST
 
 
 ## A tap on the forest floor: chips at a rock or stump, or picks a mushroom.
@@ -691,7 +745,7 @@ func _paint_shade(ci: CanvasItem) -> void:
 
 
 func _paint_light_under(ci: CanvasItem) -> void:
-	var dusk := 1.0 - time_left / DURATION
+	var dusk := 1.0 - time_left / duration
 	for s in sun_spots:
 		var pos: Vector2 = s["pos"] + Vector2(sin(t * 0.45 + s["ph"]) * 10.0, cos(t * 0.35 + s["ph"]) * 6.0)
 		var pulse := 0.8 + 0.2 * sin(t * 1.3 + s["ph"])
@@ -741,7 +795,7 @@ func _paint_objects(ci: CanvasItem) -> void:
 	for b in butterflies:
 		_paint_butterfly(ci, b)
 	if not pig.is_empty():
-		Art.pig(ci, pig["pos"], 64, pig["face"], pig["walk"], pig["rest"] > 0.0)
+		Art.pig(ci, pig["pos"], 64, pig["face"], pig["walk"], pig["rest"] > 0.0, Data.upgrades.has("golden_snout"))
 
 	for p in particles:
 		var f: float = p["life"] / p["max"]
@@ -977,7 +1031,8 @@ func _paint_butterfly(ci: CanvasItem, b: Dictionary) -> void:
 
 
 func _paint_light_over(ci: CanvasItem) -> void:
-	var dusk := 1.0 - time_left / DURATION
+	_paint_foxfire(ci)
+	var dusk := 1.0 - time_left / duration
 	var beam := Color(1.0, 0.95 - 0.2 * dusk, 0.7 - 0.3 * dusk, 0.09 + 0.02 * sin(t * 0.8))
 	var clear := Color(beam.r, beam.g, beam.b, 0.0)
 	for b in [[-90.0, 70.0], [110.0, 110.0], [310.0, 60.0], [500.0, 95.0]]:
@@ -1019,7 +1074,7 @@ func _paint_ui(ci: CanvasItem) -> void:
 	var font := ThemeDB.fallback_font
 
 	# Timer: a sun rides the bar and it warms toward evening; pulses near the end.
-	var frac := time_left / DURATION
+	var frac := time_left / duration
 	var track := Rect2(16, 120, 688, 18)
 	track_box.draw(rid, track)
 	var fill_col := Color("f5c04a").lerp(Color("e8703f"), 1.0 - frac)

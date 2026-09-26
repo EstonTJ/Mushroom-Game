@@ -48,5 +48,21 @@ func _ready() -> void:
 	Data.last_night = {"night": 7, "repelled": 36, "total": 36, "hp": 5, "coins": 38, "bones": 2, "boss": ""}
 	main._start_dawn()
 	await snap(out_dir, "dawn")
+	# The new wares, page by page, and the forest with the new gear.
+	Data.coins = 500
+	Data.upgrades = {"truffle_pig": true}
+	main._start_market(0, 0)
+	for pg in 4:
+		main.phase_node.page = pg
+		await snap(out_dir, "market_%d" % pg)
+	Data.upgrades = {"truffle_pig": true, "golden_snout": true, "foxfire_lantern": true, "foraging_basket": true, "rock_hammer": true}
+	main.phase = "dawn"
+	main._begin_day()
+	var fr = main.phase_node
+	if fr.obstacles.size() > 0:
+		fr.obstacles[0]["hidden"] = "ghost_fungus"
+	fr.pending.append({"id": "ghost_fungus", "pos": Vector2(560, 760), "life": 4.0, "t": 0.4})
+	fr.pig["pos"] = Vector2(260, 900)
+	await snap(out_dir, "forest_gear")
 	Data.clear_save()
 	get_tree().quit()

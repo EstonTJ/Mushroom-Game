@@ -1174,7 +1174,7 @@ static func coin(ci: CanvasItem, pos: Vector2, s: float, a: float = 1.0) -> void
 
 ## Truffle pig: pink, round, big snout, floppy ears, curly tail, trotting feet.
 ## face: 1 faces right, -1 faces left. t drives the trot.
-static func pig(ci: CanvasItem, pos: Vector2, s: float, face: float = 1.0, t: float = 0.0, sniff: bool = false) -> void:
+static func pig(ci: CanvasItem, pos: Vector2, s: float, face: float = 1.0, t: float = 0.0, sniff: bool = false, golden: bool = false) -> void:
 	var pink := Color("f2a8b8")
 	var dark := Color("c87890")
 	var ink := fade(INK, 0.7)
@@ -1201,6 +1201,11 @@ static func pig(ci: CanvasItem, pos: Vector2, s: float, face: float = 1.0, t: fl
 		ci.draw_colored_polygon(ear, dark)
 	var snout := head + Vector2(face * s * 0.2, s * 0.04)
 	ci.draw_colored_polygon(ellipse(snout, s * 0.1, s * 0.08, 14), Color("e88aa0"))
+	if golden:
+		# The Golden Snout: a gold ring through the nose, glinting.
+		ci.draw_arc(snout + Vector2(0, s * 0.07), s * 0.05, 0.0, TAU, 14, Color("f2c040"), maxf(1.5, s * 0.03), true)
+		if fmod(t, 1.6) < 0.25:
+			sparkle(ci, snout + Vector2(face * s * 0.08, s * 0.1), s * 0.1, Color(1, 0.95, 0.7))
 	ci.draw_circle(snout + Vector2(-s * 0.03, 0), s * 0.018, Color("5a3a3a"))
 	ci.draw_circle(snout + Vector2(s * 0.03, 0), s * 0.018, Color("5a3a3a"))
 	ci.draw_circle(head + Vector2(face * s * 0.05, -s * 0.06), s * 0.035, Color("2a1e1e"))
