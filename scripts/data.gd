@@ -5,7 +5,7 @@ extends Node
 
 ## Shown on the title screen and in the menu, so players can tell whether
 ## their browser has the latest update. Bump it with each release.
-const VERSION := "0.21"
+const VERSION := "0.22"
 const HUT_HP := 5
 const NIGHTS := 40
 ## When mushrooms unlock, in ingredient_order: three on night 1, one more on
@@ -280,6 +280,7 @@ var _snapshot := {}
 
 
 func reset_game() -> void:
+	last_night = {}
 	day = 1
 	best_day = 1
 	inventory.clear()
@@ -326,6 +327,8 @@ func version_label() -> String:
 ## Which screen the last save was made on ("forage", "brew" or "fortify"),
 ## so a reload resumes there.
 var saved_phase := "forage"
+## How the last won night went, for the dawn stats page (kept in the save).
+var last_night := {}
 
 
 func _web() -> bool:
@@ -338,7 +341,8 @@ func _web() -> bool:
 func save_game(phase: String = "forage") -> void:
 	var text := JSON.stringify({"version": SAVE_VERSION, "day": day, "phase": phase, "inventory": inventory,
 		"bottles": bottles, "discovered": discovered, "seen_creatures": seen_creatures, "unlock_seen": unlock_seen,
-		"coins": coins, "bones": bones, "upgrades": upgrades, "auto_bone": auto_bone, "batch": batch, "best_day": maxi(best_day, day), "snapshot": _snapshot})
+		"coins": coins, "bones": bones, "upgrades": upgrades, "auto_bone": auto_bone, "batch": batch, "best_day": maxi(best_day, day), "snapshot": _snapshot,
+		"last_night": last_night})
 	var f := FileAccess.open(SAVE_PATH, FileAccess.WRITE)
 	if f != null:
 		f.store_string(text)
@@ -373,6 +377,8 @@ func load_game() -> bool:
 	best_day = clampi(int(data.get("best_day", day)), day, NIGHTS)
 	unlock_seen = int(data.get("unlock_seen", 0))
 	saved_phase = str(data.get("phase", "forage"))
+	var ln = data.get("last_night", {})
+	last_night = ln if typeof(ln) == TYPE_DICTIONARY else {}
 	for id in ingredient_order:
 		inventory[id] = int(data.get("inventory", {}).get(id, 0))
 	for key in bottle_keys():

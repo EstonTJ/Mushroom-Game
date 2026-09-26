@@ -120,7 +120,11 @@ func _ready() -> void:
 				Data.bottles[id] += 3 if Data.potion_night(id) <= night else 0
 		else:
 			night += 1
-		while main.phase == "unlock" or main.phase == "market":
+		while main.phase == "unlock" or main.phase == "market" or main.phase == "dawn":
+			if main.phase == "dawn" and rng.randf() < 0.5:
+				main.phase_node.tap(main.phase_node.MARKET_BTN.get_center())
+				await frames(2)
+				continue
 			if main.phase == "market" and rng.randf() < 0.5:
 				main.phase_node.try_buy("bone_mortar")
 			main._on_action()

@@ -7,6 +7,7 @@ const Brew = preload("res://scripts/brew.gd")
 const Defense = preload("res://scripts/defense.gd")
 const Unlock = preload("res://scripts/unlock.gd")
 const Guide = preload("res://scripts/guide.gd")
+const Dawn = preload("res://scripts/dawn.gd")
 const Shop = preload("res://scripts/shop.gd")
 const Menu = preload("res://scripts/menu.gd")
 const Title = preload("res://scripts/title.gd")
@@ -55,6 +56,9 @@ func _ready() -> void:
 			int(last.get("fps", 0))]
 		if not event.is_empty():
 			last_session_note += ", " + str(event.get("kind", ""))
+			var detail := str(event.get("detail", "")).strip_edges()
+			if detail != "":
+				last_session_note += ": " + detail.left(60)
 	show_title()
 
 
@@ -89,6 +93,8 @@ func continue_game() -> void:
 			_enter_fortify()
 		"market":
 			_start_market(0, 0)
+		"dawn":
+			_start_dawn()
 		_:
 			_begin_day()
 	hint.text = "Welcome back! Resumed day %d." % Data.day
@@ -253,8 +259,11 @@ func _on_action() -> void:
 
 
 func _set_phase(new_phase: String, node: Node2D, t: String, h: String, button_text: String, on_action: Callable) -> void:
+	var phase_from := phase
 	phase = new_phase
-	Data.write_diag(new_phase + " (starting)")
+	# "brew -> fortify": if the game dies mid-switch, the title's note says which switch.
+	Data.write_diag("%s -> %s" % [phase_from, new_phase] if phase_from != "" else new_phase + " (starting)")
+	diag_timer = 3.0
 	# The title screen has its own buttons; the top bar is for play.
 	hud_layer.visible = new_phase != "title"
 	if phase_node:
@@ -356,10 +365,11 @@ func _on_night_over(won: bool, repelled: int) -> void:
 		_set_text("The hut is safe!", "You survived all %d nights. Well brewed." % Data.NIGHTS,
 			"Play again", _new_game)
 	else:
-		var got_coins: int = phase_node.coins_earned
-		var got_bones: int = phase_node.bones_earned
-		_set_text("Dawn · hut is safe", "Repelled %d. Earned %d coins and %d bones." % [repelled, got_coins, got_bones],
-			"To market", func(): _to_market(got_coins, got_bones))
+		var def = phase_node
+		var stats := {"night": Data.day, "repelled": repelled, "total": def.total_creatures(), "hp": def.hut_hp,
+			"coins": def.coins_earned, "bones": def.bones_earned, "boss": def.cfg.get("boss", "")}
+		_set_text("Dawn · hut is safe", "Repelled %d. Earned %d coins and %d bones." % [repelled, stats["coins"], stats["bones"]],
+			"Continue", func(): _to_dawn(stats))
 
 
 func _retry_day() -> void:
@@ -367,20 +377,33 @@ func _retry_day() -> void:
 	_start_day()
 
 
-## After a won night: the next day begins at the Dawn Market.
-func _to_market(got_coins: int, got_bones: int) -> void:
+## After a won night: the next day begins with the dawn stats page, where
+## the player picks the market or heads straight into the day.
+func _to_dawn(stats: Dictionary) -> void:
 	if phase != "result":
 		return
 	Data.day += 1
 	Data.best_day = maxi(Data.best_day, Data.day)
-	Data.save_game("market")
-	_start_market(got_coins, got_bones)
+	Data.last_night = stats
+	Data.save_game("dawn")
+	_start_dawn()
+
+
+func _start_dawn() -> void:
+	var node := Dawn.new()
+	node.stats = Data.last_night
+	node.market_pressed.connect(func(): _start_market(int(Data.last_night.get("coins", 0)), int(Data.last_night.get("bones", 0))))
+	node.next_pressed.connect(_begin_day)
+	_set_phase("dawn", node, "Day %d · Dawn" % Data.day, "Visit the market, or start the day.", "Start day", _begin_day)
 
 
 func _start_market(got_coins: int, got_bones: int) -> void:
+	if phase != "dawn" and phase != "title":
+		return
 	var shop := Shop.new()
 	shop.earned_coins = got_coins
 	shop.earned_bones = got_bones
+	Data.save_game("market")
 	_set_phase("market", shop, "Day %d · Dawn Market" % Data.day, "Spend coins on lab upgrades.", "Start day", _begin_day)
 
 

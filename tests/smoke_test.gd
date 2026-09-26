@@ -195,9 +195,18 @@ func _ready() -> void:
 		Data.HUT_HP, def.ward, def.repelled, def.cfg["count"]])
 	check(def.coins_earned > 0 and Data.coins == def.coins_earned, "scaring creatures off earns coins (%d)" % def.coins_earned)
 	if main.phase == "result" and def.hut_hp > 0:
+		var night_repelled: int = def.repelled
+		var night_coins: int = def.coins_earned
 		main._on_action()
 		await frames(2)
-		check(Data.day == 2 and main.phase == "market", "a won night leads to the Dawn Market")
+		check(Data.day == 2 and main.phase == "dawn", "a won night leads to the dawn stats page, not straight to the market")
+		check(main.phase_node.stats.get("night", 0) == 1 and main.phase_node.stats.get("repelled", -1) == night_repelled
+			and main.phase_node.stats.get("coins", -1) == night_coins, "the dawn page shows the night's numbers")
+		check(Data.load_game() and Data.saved_phase == "dawn" and Data.last_night.get("night", 0) == 1,
+			"the dawn page is saved, with its stats, so a reload comes back to it")
+		main.phase_node.tap(main.phase_node.MARKET_BTN.get_center())
+		await frames(2)
+		check(Data.day == 2 and main.phase == "market", "the dawn page's Market button opens the Dawn Market")
 		var mk = main.phase_node
 		Data.coins = 10
 		check(not mk.try_buy("bone_mortar") and Data.coins == 10, "the Bone Mortar can't be bought without enough coins")

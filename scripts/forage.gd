@@ -18,6 +18,12 @@ const SPAWN_EVERY := 0.9
 const MAX_ON_SCREEN := 6
 const BASKET_Y := 1110.0
 const FLY_TIME := 0.5
+## Under a rock or stump: a mushroom (else a beetle), and how often it's the
+## glowing ghost fungus once that's unlocked.
+const HIDDEN_MUSHROOM_CHANCE := 0.85
+const HIDDEN_GHOST_CHANCE := 0.25
+const ROCK_STYLES := ["boulder", "mossy", "cairn", "slab"]
+const STUMP_STYLES := ["stump", "bracket", "log", "snag"]
 const TRAIL := [Vector2(300, 100), Vector2(430, 380), Vector2(270, 700), Vector2(420, 1000), Vector2(340, 1140)]
 const STREAM := [Vector2(-30, 800), Vector2(190, 730), Vector2(430, 780), Vector2(750, 690)]
 
@@ -158,15 +164,33 @@ func _build_scenery() -> void:
 			"r": rng.randf_range(1.0, 2.5)})
 	for i in 24:
 		clovers.append({"pos": Vector2(rng.randf_range(20, 700), rng.randf_range(140, 1100)), "s": rng.randf_range(4, 6)})
+	# Bushes come in five kinds: berry, flowering, holly, fir sapling and bramble.
 	var berry_cols := [Color("d83a4a"), Color("4a5ad8"), Color("e87a2a")]
-	while bushes.size() < 6:
-		var p := Vector2(rng.randf_range(80, 640), rng.randf_range(200, 1060))
-		if _near_trail(p, 70.0) or _in_stream(p, 60.0):
+	var flower_cols := [Color("f7c6dc"), Color("fff6e8"), Color("d8c4f5")]
+	var kinds := ["berry", "flower", "holly", "fir", "bramble", "berry", "flower", "holly"]
+	var tries := 0
+	while bushes.size() < kinds.size() and tries < 400:
+		tries += 1
+		var p := Vector2(rng.randf_range(70, 650), rng.randf_range(200, 1060))
+		if _near_trail(p, 70.0) or _in_stream(p, 60.0) or _near_log(p, 30.0):
 			continue
+		var crowded := false
+		for other in bushes:
+			if other["pos"].distance_to(p) < 110.0:
+				crowded = true
+		if crowded:
+			continue
+		var kind: String = kinds[bushes.size()]
+		var sc := rng.randf_range(0.8, 1.25)
 		var blobs := []
-		for k in 5:
-			blobs.append({"off": Vector2(rng.randf_range(-28, 28), rng.randf_range(-18, 8)), "r": rng.randf_range(18, 28)})
-		bushes.append({"pos": p, "blobs": blobs, "berry": berry_cols[rng.randi() % berry_cols.size()], "seed": rng.randf() * 10.0})
+		for k in rng.randi_range(4, 7):
+			blobs.append({"off": Vector2(rng.randf_range(-30, 30), rng.randf_range(-20, 8)) * sc, "r": rng.randf_range(16, 28) * sc})
+		var dots := []
+		for k in rng.randi_range(6, 11):
+			dots.append(Vector2(rng.randf_range(-32, 32), rng.randf_range(-26, 6)) * sc)
+		bushes.append({"pos": p, "kind": kind, "s": sc, "blobs": blobs, "dots": dots,
+			"berry": berry_cols[rng.randi() % berry_cols.size()], "flower": flower_cols[rng.randi() % flower_cols.size()],
+			"seed": rng.randf() * 10.0})
 
 	for i in 24:
 		moss.append({"pos": Vector2(rng.randf_range(0, 720), rng.randf_range(120, 1110)),
@@ -243,26 +267,33 @@ func _place_obstacles() -> void:
 		if crowded:
 			continue
 		var kind := "rock" if randf() < 0.5 else "stump"
+		var style: String = (ROCK_STYLES if kind == "rock" else STUMP_STYLES).pick_random()
 		var hp := 3 if kind == "rock" else 4
-		var hidden := _pick_hidden() if randf() < 0.7 else "beetle"
-		obstacles.append({"kind": kind, "pos": p, "hp": hp, "max": hp, "shake": 0.0, "hidden": hidden,
+		var hidden := _pick_hidden() if randf() < HIDDEN_MUSHROOM_CHANCE else "beetle"
+		obstacles.append({"kind": kind, "style": style, "pos": p, "hp": hp, "max": hp, "shake": 0.0, "hidden": hidden,
 			"peek": hidden != "beetle" and randf() < 0.5, "seed": randf() * 10.0, "gone": false})
 
 
-## What hides under a rock or stump: rarer unlocked mushrooms are likelier.
+## What hides under a rock or stump: rare mushrooms are much likelier here
+## than out in the open. Each unlocked kind's chance goes with 1 / weight^3,
+## so a weight-1 rarity turns up 27 times as often as a weight-3 common one.
 func _pick_hidden() -> String:
-	if Data.is_unlocked("ghost_fungus") and randf() < 0.15:
+	if Data.is_unlocked("ghost_fungus") and randf() < HIDDEN_GHOST_CHANCE:
 		return "ghost_fungus"
 	var ids := Data.unlocked_mushrooms().filter(func(id): return Data.ingredients[id]["weight"] > 0.0)
 	var total := 0.0
 	for id in ids:
-		total += 1.0 / float(Data.ingredients[id]["weight"])
+		total += _hidden_odds(id)
 	var r := randf() * total
 	for id in ids:
-		r -= 1.0 / float(Data.ingredients[id]["weight"])
+		r -= _hidden_odds(id)
 		if r <= 0.0:
 			return id
 	return ids[-1]
+
+
+func _hidden_odds(id: String) -> float:
+	return 1.0 / pow(float(Data.ingredients[id]["weight"]), 3.0)
 
 
 func _tree(center: Vector2, rng: RandomNumberGenerator) -> Dictionary:
@@ -599,17 +630,7 @@ func _paint_floor(ci: CanvasItem) -> void:
 	for lg in logs:
 		_paint_log(ci, lg["a"], lg["b"], lg["w"])
 	for b in bushes:
-		var bp: Vector2 = b["pos"]
-		Art.shadow(ci, bp + Vector2(4, 16), 44, 12)
-		for bl in b["blobs"]:
-			ci.draw_circle(bp + bl["off"], bl["r"], Color("3f6a3a"))
-		for bl in b["blobs"]:
-			var r: float = bl["r"]
-			ci.draw_circle(bp + bl["off"] + Vector2(-r * 0.2, -r * 0.25), r * 0.65, Color("5a8a4a"))
-		for k in 7:
-			var bo := Vector2(sin(b["seed"] + k * 2.3) * 30.0, cos(b["seed"] + k * 1.7) * 14.0 - 6.0)
-			ci.draw_circle(bp + bo, 4.5, b["berry"])
-			ci.draw_circle(bp + bo + Vector2(-1.5, -1.5), 1.5, Color(1, 1, 1, 0.7))
+		_paint_bush(ci, b)
 	for cl in clovers:
 		var cp: Vector2 = cl["pos"]
 		var cs: float = cl["s"]
@@ -741,56 +762,204 @@ func _paint_objects(ci: CanvasItem) -> void:
 				ci.draw_line(bp + Vector2(0, -8), bp + Vector2(0, 8), Color("5a4a86"), 1.0, true)
 
 
-## Rock or stump that hides something. Cracks and splinters show the taps so
-## far; it shakes on each tap. Some let a mushroom cap peek out at the edge.
+## Rock or stump that hides something, in one of several looks (its style).
+## Cracks and splinters show the taps so far; it shakes on each tap. Some let
+## a mushroom cap peek out at the edge.
 func _paint_obstacle(ci: CanvasItem, o: Dictionary) -> void:
 	var pos: Vector2 = o["pos"] + Vector2(sin(t * 70.0) * o["shake"] * 14.0, 0)
 	var damage: int = o["max"] - o["hp"]
 	var sd: float = o["seed"]
 	if o["peek"]:
 		Art.ingredient(ci, o["hidden"], pos + Vector2(40, 20), 30)
+	match str(o.get("style", "boulder" if o["kind"] == "rock" else "stump")):
+		"boulder":
+			_paint_boulder(ci, pos, sd, 1.0, false)
+		"mossy":
+			_paint_boulder(ci, pos, sd, 1.05, true)
+		"cairn":
+			Art.shadow(ci, pos + Vector2(6, 22), 54, 13)
+			var low := _stone(ci, pos + Vector2(0, 4), 52, 26, sd, Color("8a8680"))
+			var mid := _stone(ci, pos + Vector2(-4, -26), 38, 19, sd + 1.3, Color("9a968e"))
+			var top := _stone(ci, pos + Vector2(3, -50), 24, 13, sd + 2.6, Color("aaa69e"))
+			for pts in [low, mid, top]:
+				Art.outline(ci, pts, Art.fade(Art.INK, 0.55), 2.0)
+			ci.draw_colored_polygon(Art.ellipse(pos + Vector2(-8, -60), 10, 4, 10), Color("8fb85a"))
+		"slab":
+			Art.shadow(ci, pos + Vector2(8, 20), 64, 12)
+			var slab := PackedVector2Array([pos + Vector2(-62, 6), pos + Vector2(-48, -28), pos + Vector2(30, -36), pos + Vector2(64, -10),
+				pos + Vector2(56, 18), pos + Vector2(-40, 22)])
+			ci.draw_colored_polygon(slab, Color("7e7a86"))
+			ci.draw_colored_polygon(PackedVector2Array([pos + Vector2(-48, -28), pos + Vector2(30, -36), pos + Vector2(64, -10),
+				pos + Vector2(-50, -6)]), Color("a29eaa"))
+			Art.outline(ci, slab, Art.fade(Art.INK, 0.55), 2.0)
+			for k in 5:
+				var lp := pos + Vector2(-34 + k * 18 + sin(sd + k) * 6.0, -22 + cos(sd * 2.0 + k) * 5.0)
+				ci.draw_circle(lp, 3.0 + fmod(sd * (k + 1), 3.0), Color("d8c86a") if k % 2 == 0 else Color("b8c8a8"))
+		"stump":
+			_paint_stump(ci, pos, sd, damage, false)
+		"bracket":
+			_paint_stump(ci, pos, sd, damage, true)
+		"log":
+			Art.shadow(ci, pos + Vector2(4, 24), 66, 12)
+			var body := PackedVector2Array([pos + Vector2(-50, -30), pos + Vector2(46, -34), pos + Vector2(46, 20), pos + Vector2(-50, 20)])
+			ci.draw_colored_polygon(body, Color("6a4a34"))
+			for k in 4:
+				ci.draw_line(pos + Vector2(-44, -18 + k * 11), pos + Vector2(40, -20 + k * 11), Color("4e3626"), 2.0, true)
+			Art.outline(ci, body, Art.fade(Art.INK, 0.7), 2.0)
+			ci.draw_colored_polygon(Art.ellipse(pos + Vector2(46, -7), 16, 27, 18), Color("c8a070"))
+			ci.draw_colored_polygon(Art.ellipse(pos + Vector2(47, -6), 9, 17, 16), Color("2a1e16"))
+			Art.outline(ci, Art.ellipse(pos + Vector2(46, -7), 16, 27, 18), Color("3e2c20"), 2.0)
+			ci.draw_colored_polygon(Art.ellipse(pos + Vector2(-14, -32), 26, 7, 14), Color("6f9a4a"))
+			for c in damage:
+				var x := -30.0 + c * 22.0
+				ci.draw_polyline(PackedVector2Array([pos + Vector2(x, -30), pos + Vector2(x + 7, -8), pos + Vector2(x - 2, 16)]),
+					Color("2a1e14"), 2.5, true)
+		"snag":
+			Art.shadow(ci, pos + Vector2(6, 26), 44, 11)
+			for side in [-1.0, 1.0]:
+				ci.draw_polyline(PackedVector2Array([pos + Vector2(side * 18, 12), pos + Vector2(side * 36, 22)]), Color("4e3828"), 7.0, true)
+			var snag := PackedVector2Array([pos + Vector2(-26, 20), pos + Vector2(-22, -62), pos + Vector2(-8, -48), pos + Vector2(2, -84),
+				pos + Vector2(12, -56), pos + Vector2(22, -70), pos + Vector2(26, 20)])
+			ci.draw_colored_polygon(snag, Color("5e4432"))
+			for k in 3:
+				ci.draw_line(pos + Vector2(-14 + k * 12, -50), pos + Vector2(-16 + k * 14, 16), Color("3e2c20"), 2.0, true)
+			ci.draw_colored_polygon(Art.ellipse(pos + Vector2(4, -20), 6, 9, 12), Color("1e1510"))
+			Art.outline(ci, snag, Art.fade(Art.INK, 0.7), 2.0)
+			for c in damage:
+				var y := -40.0 + c * 18.0
+				ci.draw_polyline(PackedVector2Array([pos + Vector2(-20, y), pos + Vector2(-4, y + 8), pos + Vector2(14, y + 2)]),
+					Color("2a1e14"), 2.5, true)
 	if o["kind"] == "rock":
-		Art.shadow(ci, pos + Vector2(6, 22), 56, 14)
-		var pts := PackedVector2Array()
-		for k in 12:
-			var ang := TAU * k / 12.0
-			var rr := 1.0 + 0.12 * sin(ang * 3.0 + sd) + 0.06 * sin(ang * 5.0 + sd * 2.0)
-			pts.append(pos + Vector2(cos(ang) * 50.0, sin(ang) * 36.0 - 8.0) * rr)
-		ci.draw_colored_polygon(pts, Color("8a8680"))
-		ci.draw_colored_polygon(Art.ellipse(pos + Vector2(12, 6), 34, 20, 16), Color("76726c"))
-		ci.draw_colored_polygon(Art.ellipse(pos + Vector2(-14, -24), 22, 11, 14), Color("aaa69e"))
-		ci.draw_colored_polygon(Art.ellipse(pos + Vector2(-4, -36), 26, 9, 14), Color("6f9a4a"))
-		Art.outline(ci, pts, Art.fade(Art.INK, 0.55), 2.0)
 		for c in damage:
 			var ang := sd + c * 2.1
 			var crack := PackedVector2Array([pos + Vector2(0, -6)])
 			for j in range(1, 4):
 				crack.append(pos + Vector2(cos(ang + sin(j + c) * 0.5) * 14.0 * j, sin(ang) * 10.0 * j - 6.0))
 			ci.draw_polyline(crack, Color("3a3834"), 2.5, true)
-	else:
-		Art.shadow(ci, pos + Vector2(6, 26), 52, 12)
-		var lean := damage * 0.05 * (1.0 if sd > 5.0 else -1.0)
-		var top := pos + Vector2(lean * 60.0, -34)
-		for k in 3:
-			var side := -1.0 if k == 0 else 1.0
-			ci.draw_polyline(PackedVector2Array([pos + Vector2(side * 20 * (k + 1) * 0.6, 12), pos + Vector2(side * (34 + k * 10), 22),
-				pos + Vector2(side * (48 + k * 12), 20)]), Color("4e3828"), 8.0 - k * 2.0, true)
-		var body := PackedVector2Array([top + Vector2(-38, 0), top + Vector2(38, 0), pos + Vector2(42, 20), pos + Vector2(-42, 20)])
-		ci.draw_colored_polygon(body, Color("5a4030"))
-		for k in 5:
-			var x := -28.0 + k * 14.0
-			ci.draw_line(top + Vector2(x, 4), pos + Vector2(x * 1.1, 18), Color("3e2c20"), 2.0, true)
-		Art.outline(ci, body, Art.fade(Art.INK, 0.7), 2.0)
-		ci.draw_colored_polygon(Art.ellipse(top, 38, 12, 20), Color("c8a070"))
-		Art.outline(ci, Art.ellipse(top, 25, 8, 16), Color("9a7448"), 1.5)
-		Art.outline(ci, Art.ellipse(top, 12, 4, 12), Color("9a7448"), 1.5)
-		Art.outline(ci, Art.ellipse(top, 38, 12, 20), Color("3e2c20"), 2.0)
-		for c in damage:
-			var x := -24.0 + c * 20.0
-			ci.draw_polyline(PackedVector2Array([top + Vector2(x, 2), top + Vector2(x + 6, 18), top + Vector2(x - 2, 34)]),
-				Color("2a1e14"), 2.5, true)
 	if damage == 0 and fmod(t + sd, 3.0) < 0.4:
 		Art.sparkle(ci, pos + Vector2(34, -44), sin(fmod(t + sd, 3.0) / 0.4 * PI) * 10.0, Color(1, 1, 0.9, 0.9))
+
+
+## A lumpy stone outline around c; returns it so callers can outline it.
+func _stone(ci: CanvasItem, c: Vector2, rx: float, ry: float, sd: float, col: Color) -> PackedVector2Array:
+	var pts := PackedVector2Array()
+	for k in 12:
+		var ang := TAU * k / 12.0
+		var rr := 1.0 + 0.12 * sin(ang * 3.0 + sd) + 0.06 * sin(ang * 5.0 + sd * 2.0)
+		pts.append(c + Vector2(cos(ang) * rx, sin(ang) * ry) * rr)
+	ci.draw_colored_polygon(pts, col)
+	ci.draw_colored_polygon(Art.ellipse(c + Vector2(-rx * 0.28, -ry * 0.45), rx * 0.42, ry * 0.3, 12), col.lightened(0.18))
+	return pts
+
+
+func _paint_boulder(ci: CanvasItem, pos: Vector2, sd: float, s: float, mossy: bool) -> void:
+	Art.shadow(ci, pos + Vector2(6, 22), 56 * s, 14)
+	var pts := PackedVector2Array()
+	for k in 12:
+		var ang := TAU * k / 12.0
+		var rr := 1.0 + 0.12 * sin(ang * 3.0 + sd) + 0.06 * sin(ang * 5.0 + sd * 2.0)
+		pts.append(pos + Vector2(cos(ang) * 50.0, sin(ang) * 36.0 - 8.0) * rr * s)
+	ci.draw_colored_polygon(pts, Color("8a8680") if not mossy else Color("7e8474"))
+	ci.draw_colored_polygon(Art.ellipse(pos + Vector2(12, 6), 34, 20, 16), Color("76726c"))
+	ci.draw_colored_polygon(Art.ellipse(pos + Vector2(-14, -24), 22, 11, 14), Color("aaa69e"))
+	if mossy:
+		# A thick moss cushion over the top, with a fern sprig.
+		ci.draw_colored_polygon(Art.ellipse(pos + Vector2(-2, -34), 44, 16, 18), Color("4f7a3a"))
+		ci.draw_colored_polygon(Art.ellipse(pos + Vector2(-8, -38), 32, 10, 16), Color("7aa84e"))
+		for k in 6:
+			ci.draw_circle(pos + Vector2(-36 + k * 14, -26 + sin(sd + k) * 3.0), 5.0, Color("5f8f42"))
+		_paint_fern(ci, pos + Vector2(34, -30), 0.5, 0.5)
+	else:
+		ci.draw_colored_polygon(Art.ellipse(pos + Vector2(-4, -36), 26, 9, 14), Color("6f9a4a"))
+	Art.outline(ci, pts, Art.fade(Art.INK, 0.55), 2.0)
+
+
+func _paint_stump(ci: CanvasItem, pos: Vector2, sd: float, damage: int, fungi: bool) -> void:
+	Art.shadow(ci, pos + Vector2(6, 26), 52, 12)
+	var lean := damage * 0.05 * (1.0 if sd > 5.0 else -1.0)
+	var top := pos + Vector2(lean * 60.0, -34)
+	for k in 3:
+		var side := -1.0 if k == 0 else 1.0
+		ci.draw_polyline(PackedVector2Array([pos + Vector2(side * 20 * (k + 1) * 0.6, 12), pos + Vector2(side * (34 + k * 10), 22),
+			pos + Vector2(side * (48 + k * 12), 20)]), Color("4e3828"), 8.0 - k * 2.0, true)
+	var body := PackedVector2Array([top + Vector2(-38, 0), top + Vector2(38, 0), pos + Vector2(42, 20), pos + Vector2(-42, 20)])
+	ci.draw_colored_polygon(body, Color("5a4030") if not fungi else Color("4e3a2c"))
+	for k in 5:
+		var x := -28.0 + k * 14.0
+		ci.draw_line(top + Vector2(x, 4), pos + Vector2(x * 1.1, 18), Color("3e2c20"), 2.0, true)
+	Art.outline(ci, body, Art.fade(Art.INK, 0.7), 2.0)
+	ci.draw_colored_polygon(Art.ellipse(top, 38, 12, 20), Color("c8a070") if not fungi else Color("a88a60"))
+	Art.outline(ci, Art.ellipse(top, 25, 8, 16), Color("9a7448"), 1.5)
+	Art.outline(ci, Art.ellipse(top, 12, 4, 12), Color("9a7448"), 1.5)
+	Art.outline(ci, Art.ellipse(top, 38, 12, 20), Color("3e2c20"), 2.0)
+	if fungi:
+		# Moss creeping over the rim and a stack of shelf fungi on the side.
+		ci.draw_colored_polygon(Art.ellipse(top + Vector2(-14, 2), 22, 7, 14), Color("6f9a4a"))
+		for k in 3:
+			var at := pos + Vector2(30 + k * 3, -4 - k * 12)
+			var w := 20.0 - k * 4.0
+			ci.draw_colored_polygon(PackedVector2Array([at + Vector2(-4, 0), at + Vector2(w, -4), at + Vector2(w + 2, 2), at + Vector2(-4, 5)]),
+				Color("d89a4a") if k % 2 == 0 else Color("c07a38"))
+			ci.draw_line(at + Vector2(-2, 4), at + Vector2(w, 1), Color("fff0d0"), 1.5, true)
+	for c in damage:
+		var x := -24.0 + c * 20.0
+		ci.draw_polyline(PackedVector2Array([top + Vector2(x, 2), top + Vector2(x + 6, 18), top + Vector2(x - 2, 34)]),
+			Color("2a1e14"), 2.5, true)
+
+
+## Bushes (painted once into the forest floor): berry, flowering, holly,
+## fir sapling or bramble, each at its own size.
+func _paint_bush(ci: CanvasItem, b: Dictionary) -> void:
+	var bp: Vector2 = b["pos"]
+	var sc: float = b["s"]
+	var kind: String = b.get("kind", "berry")
+	Art.shadow(ci, bp + Vector2(4, 16 * sc), 44 * sc, 12 * sc)
+	if kind == "fir":
+		for k in 3:
+			var w := (40.0 - k * 11.0) * sc
+			var y := bp.y + (10.0 - k * 22.0) * sc
+			var tri := PackedVector2Array([Vector2(bp.x - w, y), Vector2(bp.x, y - 34.0 * sc), Vector2(bp.x + w, y)])
+			ci.draw_colored_polygon(tri, Color("2f5a38"))
+			ci.draw_colored_polygon(PackedVector2Array([Vector2(bp.x - w * 0.6, y - 4), Vector2(bp.x, y - 30.0 * sc), Vector2(bp.x, y - 4)]),
+				Color("477a48"))
+		ci.draw_rect(Rect2(bp.x - 4 * sc, bp.y + 8 * sc, 8 * sc, 10 * sc), Color("5a4030"))
+		return
+	var dark: Color = {"berry": Color("3f6a3a"), "flower": Color("4a7a40"), "holly": Color("24472e"), "bramble": Color("4a5a30")}[kind]
+	var light: Color = {"berry": Color("5a8a4a"), "flower": Color("6e9e52"), "holly": Color("3a6a44"), "bramble": Color("6a7a3e")}[kind]
+	for bl in b["blobs"]:
+		ci.draw_circle(bp + bl["off"], bl["r"], dark)
+	for bl in b["blobs"]:
+		var r: float = bl["r"]
+		ci.draw_circle(bp + bl["off"] + Vector2(-r * 0.2, -r * 0.25), r * 0.65, light)
+	match kind:
+		"berry":
+			for d in b["dots"]:
+				ci.draw_circle(bp + d, 4.5, b["berry"])
+				ci.draw_circle(bp + d + Vector2(-1.5, -1.5), 1.5, Color(1, 1, 1, 0.7))
+		"flower":
+			for d in b["dots"]:
+				for k in 5:
+					ci.draw_circle(bp + d + Vector2.from_angle(k * TAU / 5.0) * 3.5, 3.0, b["flower"])
+				ci.draw_circle(bp + d, 2.2, Color("f5c04a"))
+		"holly":
+			for d in b["dots"]:
+				var tip: Vector2 = bp + d
+				ci.draw_colored_polygon(PackedVector2Array([tip + Vector2(-7, 0), tip + Vector2(0, -4), tip + Vector2(7, 0), tip + Vector2(0, 4)]),
+					Color("4f8a5a"))
+			for k in 4:
+				var bo: Vector2 = b["dots"][k]
+				ci.draw_circle(bp + bo + Vector2(3, 5), 3.5, Color("d02a36"))
+		"bramble":
+			var thorn := Color("3a2a22")
+			for k in 4:
+				var a0: Vector2 = b["dots"][k]
+				var a1: Vector2 = b["dots"][k + 1]
+				ci.draw_line(bp + a0, bp + a1 + Vector2(0, -8), Color("6a3a3a"), 2.5, true)
+				ci.draw_line(bp + (a0 + a1) / 2.0, bp + (a0 + a1) / 2.0 + Vector2(3, -5), thorn, 1.5, true)
+			for k in range(4, b["dots"].size()):
+				var d: Vector2 = b["dots"][k]
+				ci.draw_circle(bp + d, 4.0, Color("2a1a3a"))
+				ci.draw_circle(bp + d + Vector2(-1.2, -1.2), 1.3, Color(1, 1, 1, 0.5))
 
 
 func _paint_butterfly(ci: CanvasItem, b: Dictionary) -> void:
