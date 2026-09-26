@@ -115,6 +115,12 @@ Penicillin and Lichen. Notes from the check:
   yew should never be eaten. Lion's Mane is protected by law in Britain.
 - Most sources say Ghost Fungus glows green; Fungimap says white.
 - No reliable source was found for the Indigo Milk Cap's season outside Mexico.
+- Reishi (lingzhi), the rare Everlasting ingredient, is a real mushroom too.
+  Its fact ("grows on the stumps of broadleaf trees; revered in China for over
+  2,000 years as the mushroom of immortality") is from the Wikipedia article
+  Lingzhi (mushroom). Its scientific naming is unsettled (Ganoderma
+  lingzhi / G. sichuanense; G. lucidum is a separate European species), so the
+  game doesn't give a Latin name.
 
 The game says it on every unlock card and Guide page: real wild mushrooms can
 be deadly, so never eat one you find.

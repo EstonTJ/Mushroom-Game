@@ -38,6 +38,8 @@ const SURFACE := POT + Vector2(0, -106)
 const BOOK_TOP := 985.0
 ## Where the bone bowl sits once the Bone Mortar has been bought.
 const BONE_BOWL := Vector2(78, 716)
+## The reishi dish, on the right (shown once you have a reishi).
+const REISHI_DISH := Vector2(642, 716)
 const FLY_TIME := 0.9
 
 
@@ -57,6 +59,7 @@ var pot: Array[String] = []
 var dragging := ""
 var swirl := 0.0
 var pot_bone := false
+var pot_reishi := false
 var auto_flight := 1.0
 var bubble := {}
 var bubbles_done := 0
@@ -165,6 +168,9 @@ func return_pot() -> void:
 	if pot_bone:
 		Data.bones += 1
 		pot_bone = false
+	if pot_reishi:
+		Data.reishi += 1
+		pot_reishi = false
 	_reset_bubbles()
 
 
@@ -206,6 +212,10 @@ func _on_press(p: Vector2) -> void:
 	if has_auto() and auto_switch_rect().has_point(p):
 		Data.auto_bone = not Data.auto_bone
 		_auto_bone()
+		return
+	if Data.reishi > 0 and p.distance_to(REISHI_DISH) < 64.0:
+		if not pot_reishi:
+			dragging = "reishi"
 		return
 	if has_mortar() and p.distance_to(BONE_BOWL) < 64.0:
 		if Data.bones > 0 and not pot_bone:
@@ -260,7 +270,7 @@ func auto_switch_rect() -> Rect2:
 
 ## With the Bone Appétit on, a bone goes in by itself once two mushrooms are in.
 func _auto_bone() -> void:
-	if has_auto() and Data.auto_bone and brewing() and not pot_bone and Data.bones > 0:
+	if has_auto() and Data.auto_bone and brewing() and not pot_bone and not pot_reishi and Data.bones > 0:
 		Data.bones -= 1
 		pot_bone = true
 		auto_flight = 0.0
@@ -268,8 +278,15 @@ func _auto_bone() -> void:
 
 
 func _on_release(p: Vector2) -> void:
+	if dragging == "reishi":
+		if p.distance_to(POT) < 200.0 and not pot_reishi:
+			add_reishi()
+		dragging = ""
+		return
 	if dragging == "bone":
-		if p.distance_to(POT) < 200.0 and not pot_bone:
+		if p.distance_to(POT) < 200.0 and pot_reishi:
+			_popup("Reishi's in: no room for a bone this time", Color("f5e6c0"))
+		elif p.distance_to(POT) < 200.0 and not pot_bone:
 			Data.bones -= 1
 			pot_bone = true
 			_splash(Color("efe6d0"))
@@ -285,6 +302,18 @@ func _on_release(p: Vector2) -> void:
 				_reset_bubbles()
 				_auto_bone()
 		dragging = ""
+
+
+## A reishi into the cauldron: one bottle of this brew will be Everlasting.
+## A bone already in goes back to the bowl (a brew takes one or the other).
+func add_reishi() -> void:
+	Data.reishi -= 1
+	pot_reishi = true
+	if pot_bone:
+		Data.bones += 1
+		pot_bone = false
+	_splash(Color("c0582a"))
+	_popup("Reishi added: one bottle will be Everlasting!", Color("ffd890"))
 
 
 func _bubble_step(delta: float) -> void:
@@ -345,6 +374,7 @@ func _finish_brew() -> void:
 	var id: String = Data.recipe_for(pot[0], pot[1])
 	var flawless := perfect_pops == BUBBLES
 	var empowered := pot_bone
+	var everlasting := pot_reishi
 	# A batch uses one more of each mushroom per extra potion (taken now).
 	var count := batch_possible()
 	for i in count - 1:
@@ -352,7 +382,13 @@ func _finish_brew() -> void:
 		Data.inventory[pot[1]] -= 1
 	pot.clear()
 	pot_bone = false
+	pot_reishi = false
 	_reset_bubbles()
+	# Reishi only works in a potion that lingers; otherwise it goes back unused.
+	var reishi_back := everlasting and (id == "" or not Data.lingers(id))
+	if reishi_back:
+		Data.reishi += 1
+		everlasting = false
 	if id == "":
 		murk = 1.0
 		for i in 12:
@@ -373,6 +409,10 @@ func _finish_brew() -> void:
 		Data.bones -= plus_count - 1
 	Data.bottles[id + "+"] += plus_count * made
 	Data.bottles[id] += (count - plus_count) * made
+	# The reishi turns exactly one plain bottle of the brew Everlasting.
+	if everlasting:
+		Data.bottles[id] -= 1
+		Data.bottles[id + "~"] += 1
 	_burst(SURFACE, info["color"], 30 + 10 * count, 260.0)
 	for k in mini(count * made, 6):
 		flyers.append({"id": id, "t": -0.15 * k})
@@ -385,11 +425,15 @@ func _finish_brew() -> void:
 			(" (%d empowered)" % (plus_count * made)) if plus_count > 0 else ""]
 	if flare:
 		what = "The coals flare! +%d %s" % [count * made, Data.potions[id]["name"]]
+	if everlasting:
+		what = "Everlasting %s! It lasts all night." % Data.potions[id]["name"]
 	if not Data.discovered.has(id):
 		Data.discovered[id] = true
 		what = ("Perfect! New recipe: %s x%d" % [info["name"], made]) if flawless else ("New recipe: %s!" % info["name"])
 		if count > 1:
 			what = "New recipe: %s! Batch +%d" % [info["name"], count * made]
+	if reishi_back:
+		what += "  (reishi only works in clouds and puddles)"
 	_popup(what, info["color"].lightened(0.25))
 
 
@@ -584,6 +628,8 @@ func _paint_objects(ci: CanvasItem) -> void:
 	_paint_candle(ci)
 	if has_mortar():
 		_paint_bone_bowl(ci, font)
+	if Data.reishi > 0 or pot_reishi or dragging == "reishi":
+		_paint_reishi_dish(ci, font)
 	_paint_fire(ci)
 	_paint_cauldron(ci)
 
@@ -600,6 +646,10 @@ func _paint_objects(ci: CanvasItem) -> void:
 		var m := get_global_mouse_position()
 		Art.shadow(ci, m + Vector2(10, 40), 26, 7)
 		Art.bone(ci, m, 70, 1.0, -0.5 + sin(t * 4.0) * 0.2)
+	elif dragging == "reishi":
+		var m := get_global_mouse_position()
+		Art.glow(ci, m, 60, Color(1, 0.8, 0.4, 0.4))
+		Art.reishi(ci, m + Vector2(0, 20), 90)
 	elif dragging != "":
 		var m := get_global_mouse_position()
 		Art.shadow(ci, m + Vector2(10, 50), 34, 9)
@@ -631,6 +681,26 @@ func _paint_jar(ci: CanvasItem, rid: RID, font: Font, i: int) -> void:
 		ci.draw_string(font, Vector2(c.x - 32, c.y + 12), "?", HORIZONTAL_ALIGNMENT_CENTER, 64, 30, Color(1, 1, 1, 0.35))
 		ci.draw_string(font, Vector2(c.x - 45, c.y - 49), "Night %d" % Data.unlock_night(id), HORIZONTAL_ALIGNMENT_CENTER,
 			90, 12, Color(1, 1, 1, 0.45))
+
+
+## A small glowing dish of reishi on the right-hand wall shelf, with a count.
+## Drag one into the cauldron to make one bottle Everlasting.
+func _paint_reishi_dish(ci: CanvasItem, font: Font) -> void:
+	var d := REISHI_DISH
+	var n: int = Data.reishi - (1 if dragging == "reishi" else 0)
+	ci.draw_rect(Rect2(d.x - 64, d.y + 26, 128, 12), Color("6d5140"))
+	ci.draw_colored_polygon(PackedVector2Array([Vector2(d.x + 54, d.y + 38), Vector2(d.x + 34, d.y + 38), Vector2(d.x + 54, d.y + 62)]),
+		Color("4a3424"))
+	Art.glow(ci, d + Vector2(0, -6), 70, Color(1.0, 0.75, 0.35, 0.22 + 0.1 * sin(t * 2.0)))
+	for k in mini(n, 3):
+		Art.reishi(ci, d + Vector2(-16 + k * 16, 16 - (k % 2) * 6), 52)
+	ci.draw_colored_polygon(Art.ellipse(d + Vector2(0, 22), 50, 10, 20), Color("c8b8a0"))
+	ci.draw_colored_polygon(Art.ellipse(d + Vector2(0, 20), 42, 6, 20), Color("e8dcc4"))
+	var label := "Reishi x%d" % n
+	ci.draw_string_outline(font, d + Vector2(-50, 56), label, HORIZONTAL_ALIGNMENT_CENTER, 100, 15, 4, Color(0, 0, 0, 0.6))
+	ci.draw_string(font, d + Vector2(-50, 56), label, HORIZONTAL_ALIGNMENT_CENTER, 100, 15, Color("ffd890"))
+	if n > 0 and not pot_reishi and dragging == "":
+		Art.sparkle(ci, d + Vector2(-36, -26), 6.0 + 3.0 * sin(t * 5.0), Color(1, 0.9, 0.6))
 
 
 ## Little wall shelf with a wooden bowl of monster bones and a count.
@@ -771,6 +841,11 @@ func _paint_cauldron(ci: CanvasItem) -> void:
 		else:
 			ci.draw_arc(bp, 12.0 + (ph - 0.8) * 30.0, 0, TAU, 14, Art.fade(liquid.lightened(0.4), (1.0 - ph) * 5.0), 2.0, true)
 
+	if pot_reishi:
+		var rang := t * 0.4 - PI * 0.5
+		var rp := SURFACE + Vector2(cos(rang) * 50.0, sin(rang) * 10.0 - 8.0 + sin(t * 3.0 + 1.0) * 3.0)
+		Art.glow(ci, rp, 46, Color(1, 0.8, 0.4, 0.4))
+		Art.reishi(ci, rp + Vector2(0, 10), 56)
 	if pot_bone:
 		var bang := t * 0.4 + PI * 0.5
 		var bp := SURFACE + Vector2(cos(bang) * 50.0, sin(bang) * 10.0 - 8.0 + sin(t * 3.0) * 3.0)
@@ -905,8 +980,12 @@ func _paint_ui(ci: CanvasItem) -> void:
 		var pt: float = p["t"]
 		var at := Vector2(0, 450 - pt * 30)
 		var a := clampf(1.8 - pt, 0.0, 1.0)
-		ci.draw_string_outline(font, at, p["text"], HORIZONTAL_ALIGNMENT_CENTER, 720, 34, 8, Color(0, 0, 0, 0.6 * a))
-		ci.draw_string(font, at, p["text"], HORIZONTAL_ALIGNMENT_CENTER, 720, 34, Art.fade(p["color"], a))
+		# Long messages shrink to fit the screen.
+		var size := 34
+		while size > 18 and font.get_string_size(p["text"], HORIZONTAL_ALIGNMENT_LEFT, -1, size).x > 690.0:
+			size -= 1
+		ci.draw_string_outline(font, at, p["text"], HORIZONTAL_ALIGNMENT_CENTER, 720, size, 8, Color(0, 0, 0, 0.6 * a))
+		ci.draw_string(font, at, p["text"], HORIZONTAL_ALIGNMENT_CENTER, 720, size, Art.fade(p["color"], a))
 
 	for m in marks:
 		var mt: float = m["t"]
@@ -962,4 +1041,6 @@ func _paint_recipe(ci: CanvasItem, font: Font, i: int) -> void:
 	var bottled := "%d bottled" % Data.bottles[id]
 	if Data.bottles[id + "+"] > 0:
 		bottled += ", %d empowered" % Data.bottles[id + "+"]
+	if Data.bottles.get(id + "~", 0) > 0:
+		bottled += ", %d everlasting" % Data.bottles[id + "~"]
 	ci.draw_string(font, cell.position + Vector2(95, 98), bottled, HORIZONTAL_ALIGNMENT_LEFT, -1, 16, Data.moss)

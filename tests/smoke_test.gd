@@ -164,6 +164,29 @@ func _ready() -> void:
 	check(made_counts.has(3) and made_counts.has(2) and made_counts.size() == 2,
 		"Everburning Coals: a Perfect brew sometimes makes 3 bottles, otherwise 2")
 	Data.upgrades.erase("everburning_coals")
+	# Reishi: one bottle of a lingering potion comes out Everlasting.
+	var bottles_keep: Dictionary = Data.bottles.duplicate()
+	var inventory_keep: Dictionary = Data.inventory.duplicate()
+	check(Data.potion_stats("spore~")["duration"] == Data.EVERLASTING_TIME and Data.bottle_keys().has("spore~")
+		and not Data.bottle_keys().has("ember~"), "Everlasting potions exist for clouds and puddles, not bursts")
+	Data.reishi = 1
+	Data.inventory["puffball"] = 4
+	Data.inventory["fly_agaric"] = 4
+	var sp_before: int = Data.bottles["spore"]
+	var ev_before: int = Data.bottles["spore~"]
+	brew.add_reishi()
+	brew_pair(brew, "puffball", "fly_agaric", "perfect")
+	check(Data.reishi == 0 and Data.bottles["spore~"] == ev_before + 1 and Data.bottles["spore"] == sp_before + 1,
+		"a reishi makes one bottle of a Perfect brew Everlasting (the other stays plain)")
+	Data.reishi = 1
+	Data.inventory["chanterelle"] = 4
+	var em_before: int = Data.bottles["ember"]
+	brew.add_reishi()
+	brew_pair(brew, "fly_agaric", "chanterelle", "perfect")
+	check(Data.reishi == 1 and Data.bottles["ember"] == em_before + 2, "reishi in a burst potion isn't used up; it goes back")
+	Data.reishi = 0
+	Data.bottles = bottles_keep
+	Data.inventory = inventory_keep
 	Data.inventory["puffball"] = 2
 	Data.bottles["spore"] = 2
 	brew_pair(brew, "puffball", "puffball", "perfect")
@@ -397,6 +420,36 @@ func _ready() -> void:
 	check(in_mud < 0.6 and hi > 1.1 and lo < 0.6 and dm.pace_at(flyer) == 1.0,
 		"creatures wade slowly through mud (%.2f), slow on bends and speed up on straights (%.2f to %.2f); flyers don't" % [in_mud, lo, hi])
 	dm.queue_free()
+
+	# Reishi sources: every boss drops one; a stump can hide one.
+	var dr = night_map(3)
+	var reishi_before := Data.reishi
+	dr._drop_loot({"kind": "mischief_king", "pos": Vector2(360, 600)})
+	var mischief_before := Data.reishi
+	dr._drop_loot({"kind": "mischief", "pos": Vector2(360, 600)})
+	check(mischief_before == reishi_before + 1 and Data.reishi == mischief_before and dr.reishi_earned == 1,
+		"a boss drops a reishi; ordinary creatures don't")
+	# An Everlasting cloud is still at full strength a minute in.
+	dr._spawn_area("spore~", Vector2(360, 600))
+	var ev_area: Dictionary = dr.areas[-1]
+	ev_area["time"] -= 60.0
+	check(dr._area_strength(ev_area) == 1.0 and ev_area["time"] > 1000.0, "an Everlasting cloud lasts the whole night")
+	dr.queue_free()
+	var fr = Forage.new()
+	add_child(fr)
+	var r_stump := {"kind": "stump", "style": "stump", "pos": Vector2(360, 700), "hp": 1, "max": 4, "shake": 0.0,
+		"hidden": "reishi", "peek": false, "seed": 1.0, "gone": false}
+	fr.obstacles.append(r_stump)
+	var items_before: int = fr.items.size()
+	var r0 := Data.reishi
+	fr._hit_obstacle(r_stump)
+	check(r_stump["gone"] and Data.reishi == r0 + 1 and fr.items.size() == items_before and fr.reishi_found == 1,
+		"a reishi under a stump goes straight into your stock")
+	fr.queue_free()
+	Data.save_game("forage")
+	var saved_reishi := Data.reishi
+	Data.reishi = 0
+	check(Data.load_game() and Data.reishi == saved_reishi, "reishi is saved")
 
 	# --- Truffle Pig ------------------------------------------------------------
 	Data.upgrades.erase("truffle_pig")
@@ -687,6 +740,9 @@ func _ready() -> void:
 	d.selected = ""
 
 	# Bottle bar pages when there are many kinds.
+	for key in Data.bottle_keys():
+		if Data.is_everlasting(key):
+			Data.bottles[key] = 0
 	for id in Data.potion_order:
 		Data.bottles[id] = 1
 	var lay: Dictionary = d._bar_layout()

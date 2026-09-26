@@ -5,7 +5,7 @@ extends Node
 
 ## Shown on the title screen and in the menu, so players can tell whether
 ## their browser has the latest update. Bump it with each release.
-const VERSION := "0.25"
+const VERSION := "0.26"
 const HUT_HP := 5
 const NIGHTS := 40
 ## When mushrooms unlock, in ingredient_order: three on night 1, one more on
@@ -290,6 +290,16 @@ var seen_creatures := {}
 ## The last day whose "new mushroom" screen has been shown.
 var unlock_seen := 0
 var _snapshot := {}
+## Reishi (lingzhi) caps: the rare ingredient that makes a lingering potion
+## Everlasting (its cloud or puddle stays all night). Bosses drop one; after
+## REISHI_NIGHT a stump sometimes hides one.
+var reishi := 0
+const REISHI_NIGHT := 7
+const REISHI_STUMP_CHANCE := 0.06
+## How long an Everlasting potion's effect lasts: the rest of the night.
+const EVERLASTING_TIME := 9999.0
+## Source: Wikipedia, "Lingzhi (mushroom)" (checked 2026-09-25).
+const REISHI_FACT := "Reishi, or lingzhi, grows on the stumps of broadleaf trees. In China it has been revered for over 2,000 years as the mushroom of immortality."
 
 
 func reset_game() -> void:
@@ -303,6 +313,7 @@ func reset_game() -> void:
 	unlock_seen = 0
 	coins = 0
 	bones = 0
+	reishi = 0
 	upgrades.clear()
 	auto_bone = true
 	batch = 1
@@ -354,7 +365,7 @@ func _web() -> bool:
 func save_game(phase: String = "forage") -> void:
 	var text := JSON.stringify({"version": SAVE_VERSION, "day": day, "phase": phase, "inventory": inventory,
 		"bottles": bottles, "discovered": discovered, "seen_creatures": seen_creatures, "unlock_seen": unlock_seen,
-		"coins": coins, "bones": bones, "upgrades": upgrades, "auto_bone": auto_bone, "batch": batch, "best_day": maxi(best_day, day), "snapshot": _snapshot,
+		"coins": coins, "bones": bones, "reishi": reishi, "upgrades": upgrades, "auto_bone": auto_bone, "batch": batch, "best_day": maxi(best_day, day), "snapshot": _snapshot,
 		"last_night": last_night})
 	var f := FileAccess.open(SAVE_PATH, FileAccess.WRITE)
 	if f != null:
@@ -400,6 +411,7 @@ func load_game() -> bool:
 	auto_bone = bool(data.get("auto_bone", true))
 	batch = clampi(int(data.get("batch", 1)), 1, MAX_BATCH)
 	bones = int(data.get("bones", 0))
+	reishi = int(data.get("reishi", 0))
 	for u in data.get("upgrades", {}):
 		if shop_items.has(u):
 			upgrades[u] = true
@@ -418,6 +430,7 @@ func load_game() -> bool:
 			_snapshot["bottles"][key] = int(snap["bottles"].get(key, 0))
 		_snapshot["coins"] = int(snap.get("coins", coins))
 		_snapshot["bones"] = int(snap.get("bones", bones))
+		_snapshot["reishi"] = int(snap.get("reishi", reishi))
 	else:
 		take_snapshot()
 	return true
@@ -469,7 +482,7 @@ func take_last_diag() -> Dictionary:
 ## Saved at the start of each day so a lost night can be retried.
 ## Discovered recipes are kept on a retry: the player still knows them.
 func take_snapshot() -> void:
-	_snapshot = {"inventory": inventory.duplicate(), "bottles": bottles.duplicate(), "coins": coins, "bones": bones}
+	_snapshot = {"inventory": inventory.duplicate(), "bottles": bottles.duplicate(), "coins": coins, "bones": bones, "reishi": reishi}
 
 
 func restore_snapshot() -> void:
@@ -477,6 +490,7 @@ func restore_snapshot() -> void:
 	bottles = _snapshot["bottles"].duplicate()
 	coins = int(_snapshot.get("coins", coins))
 	bones = int(_snapshot.get("bones", bones))
+	reishi = int(_snapshot.get("reishi", reishi))
 
 
 ## Badge colour for an edibility label: green edible, amber cook first,
@@ -491,17 +505,31 @@ func edibility_color(label: String) -> Color:
 	return Color("4f8a44")
 
 
-## Every bottle stock key: each potion id, and id + "+" for its Empowered form.
+## Every bottle stock key: each potion id, id + "+" for its Empowered form,
+## and id + "~" for the Everlasting form of a lingering potion (reishi).
 func bottle_keys() -> Array:
 	var keys := []
 	for id in potion_order:
 		keys.append(id)
 		keys.append(id + "+")
+		if lingers(id):
+			keys.append(id + "~")
 	return keys
 
 
+## A potion that leaves a cloud or puddle behind (not a burst, ward or cure):
+## the kind reishi can make Everlasting.
+func lingers(id: String) -> bool:
+	var d: Dictionary = potions[id]
+	return d.has("duration") and not d.has("burst")
+
+
+func is_everlasting(key: String) -> bool:
+	return key.ends_with("~")
+
+
 func base_id(key: String) -> String:
-	return key.trim_suffix("+")
+	return key.trim_suffix("+").trim_suffix("~")
 
 
 func is_empowered(key: String) -> bool:
@@ -511,6 +539,14 @@ func is_empowered(key: String) -> bool:
 ## A potion's stats by bottle key. For an Empowered key ("spore+") the stats
 ## are boosted by EMPOWER and the name gets a "+".
 func potion_stats(key: String) -> Dictionary:
+	if is_everlasting(key):
+		if not _empowered.has(key):
+			var ev: Dictionary = potions[base_id(key)].duplicate(true)
+			ev["duration"] = EVERLASTING_TIME
+			ev["everlasting"] = true
+			ev["color"] = Color(ev["color"]).lightened(0.1)
+			_empowered[key] = ev
+		return _empowered[key]
 	if not is_empowered(key):
 		return potions[key]
 	if not _empowered.has(key):

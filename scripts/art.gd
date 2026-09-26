@@ -1174,6 +1174,29 @@ static func coin(ci: CanvasItem, pos: Vector2, s: float, a: float = 1.0) -> void
 
 ## Truffle pig: pink, round, big snout, floppy ears, curly tail, trotting feet.
 ## face: 1 faces right, -1 faces left. t drives the trot.
+## Reishi (lingzhi): a fan-shaped bracket with a glossy, varnished red-brown
+## cap, banded, with a creamy growing rim. pos is where it sits; s its width.
+static func reishi(ci: CanvasItem, pos: Vector2, s: float, a: float = 1.0) -> void:
+	if s < 2.0:
+		return
+	var c := pos + Vector2(0, -s * 0.12)
+	shadow(ci, pos + Vector2(0, s * 0.08), s * 0.45, s * 0.1, a)
+	ci.draw_rect(Rect2(pos.x - s * 0.06, c.y, s * 0.12, s * 0.2), fade(Color("5a2412"), a))
+	var bands := [[0.5, Color("f0d890")], [0.44, Color("c0582a")], [0.34, Color("8a2e16")], [0.22, Color("6a1e10")]]
+	for b in bands:
+		var r: float = b[0]
+		var pts := PackedVector2Array()
+		for j in 17:
+			var ang := PI + PI * j / 16.0
+			var kidney := 1.0 - 0.12 * exp(-pow((ang - PI * 1.5) * 3.0, 2.0))
+			pts.append(c + Vector2(cos(ang) * s * r, sin(ang) * s * r * 0.62 * kidney))
+		pts.append(c + Vector2(s * r * 0.9, s * 0.04))
+		pts.append(c + Vector2(-s * r * 0.9, s * 0.04))
+		ci.draw_colored_polygon(pts, fade(b[1], a))
+	# Varnish shine.
+	ci.draw_colored_polygon(ellipse(c + Vector2(-s * 0.12, -s * 0.16), s * 0.14, s * 0.04, 12), Color(1, 1, 1, 0.45 * a))
+
+
 static func pig(ci: CanvasItem, pos: Vector2, s: float, face: float = 1.0, t: float = 0.0, sniff: bool = false, golden: bool = false) -> void:
 	var pink := Color("f2a8b8")
 	var dark := Color("c87890")

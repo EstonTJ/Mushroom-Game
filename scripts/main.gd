@@ -368,7 +368,7 @@ func _on_night_over(won: bool, repelled: int) -> void:
 	else:
 		var def = phase_node
 		var stats := {"night": Data.day, "repelled": repelled, "total": def.total_creatures(), "hp": def.hut_hp,
-			"coins": def.coins_earned, "bones": def.bones_earned, "boss": def.cfg.get("boss", "")}
+			"coins": def.coins_earned, "bones": def.bones_earned, "reishi": def.reishi_earned, "boss": def.cfg.get("boss", "")}
 		_set_text("Dawn · hut is safe", "Repelled %d. Earned %d coins and %d bones." % [repelled, stats["coins"], stats["bones"]],
 			"Continue", func(): _to_dawn(stats))
 

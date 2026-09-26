@@ -125,6 +125,10 @@ func _draw() -> void:
 	if boss != "":
 		Art.crown(self, Vector2(x0 + 22, row - 6), 32)
 		_row(font, row, "Boss beaten", str(Data.creatures[boss]["name"]))
+		if int(stats.get("reishi", 0)) > 0:
+			Art.reishi(self, Vector2(CARD.position.x + 120, row + 44), 40)
+			draw_string(font, Vector2(CARD.position.x + 146, row + 50), "It dropped a reishi! (you have %d)" % Data.reishi,
+				HORIZONTAL_ALIGNMENT_LEFT, -1, 20, Color("a8401e"))
 	else:
 		var next_boss := Data.night_boss(Data.day)
 		Art.glow(self, Vector2(x0 + 22, row - 8), 26, Color(0.6, 0.5, 1.0, 0.6))

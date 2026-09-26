@@ -115,6 +115,7 @@ var bar_page := 0
 var loot := []
 var coins_earned := 0
 var bones_earned := 0
+var reishi_earned := 0
 var roar_t := 1.0
 var shake := 0.0
 var spawn_timer := 0.0
@@ -597,6 +598,12 @@ func _drop_loot(e: Dictionary) -> void:
 		for i in n_bones:
 			loot.append({"kind": "bone", "from": from, "t": -0.1 - i * 0.1, "to": BONE_ICON})
 		text += "  Bone!" if n_bones == 1 else "  %d bones!" % n_bones
+	# Every boss leaves a reishi behind: the only sure way to get one.
+	if info.get("boss", false):
+		Data.reishi += 1
+		reishi_earned += 1
+		loot.append({"kind": "reishi", "from": from, "t": -0.3, "to": BONE_ICON})
+		text += "  Reishi!"
 	_popup(text, from, Color("f5c04a"))
 
 
@@ -864,6 +871,9 @@ func _c(dusk: Color, night: Color) -> Color:
 
 
 func _area_strength(a: Dictionary) -> float:
+	if a["max"] >= Data.EVERLASTING_TIME:
+		# Everlasting: fades in, then stays at full strength all night.
+		return minf(1.0, 0.2 + (a["max"] - a["time"]) * 1.4)
 	var life: float = a["time"] / a["max"]
 	return minf(1.0, life * 3.0) * minf(1.0, (1.0 - life) * 8.0 + 0.2)
 
@@ -1020,6 +1030,10 @@ func _paint_light_under(ci: CanvasItem) -> void:
 			Art.glow(ci, s["pos"], 55, Art.fade(Data.potion_stats(s["trap"])["color"], 0.22))
 	for a in areas:
 		Art.glow(ci, a["pos"], a["radius"] * 1.4, Art.fade(Data.potion_stats(a["id"])["color"], 0.35 * _area_strength(a)))
+		if a["max"] >= Data.EVERLASTING_TIME:
+			# Everlasting: a slow golden ring marks it as lasting all night.
+			var ring := Art.ellipse(a["pos"], a["radius"] * 1.02, a["radius"] * 0.55, 40)
+			Art.outline(ci, ring, Color(1.0, 0.8, 0.4, 0.35 + 0.15 * sin(t * 2.0)), 2.5)
 	if ward > 0:
 		Art.glow(ci, HUT + Vector2(0, -50), 230, Art.fade(Data.magic, 0.1 + 0.05 * sin(t * 4.0)))
 		var ring := Art.ellipse(HUT + Vector2(0, -50), 178, 140, 64)
@@ -1353,6 +1367,9 @@ func _paint_ui(ci: CanvasItem) -> void:
 		var at := from.lerp(ctrl, k).lerp(ctrl.lerp(to, k), k)
 		if l["kind"] == "coin":
 			Art.coin(ci, at, 22.0 - 6.0 * k)
+		elif l["kind"] == "reishi":
+			Art.glow(ci, at, 50, Color(1, 0.8, 0.4, 0.5))
+			Art.reishi(ci, at, 60.0 - 20.0 * k)
 		else:
 			Art.bone(ci, at, 34.0 - 8.0 * k, 1.0, -0.5 + k * 6.0)
 
@@ -1381,11 +1398,14 @@ func _paint_bar(ci: CanvasItem) -> void:
 		if Data.is_empowered(id):
 			Art.glow(ci, Vector2(cell.get_center().x, BAR_Y + 70), 40, Color(1, 0.95, 0.7, 0.25))
 			Art.bone(ci, cell.position + Vector2(24, 26), 26, 1.0, -0.6)
+		elif Data.is_everlasting(id):
+			Art.glow(ci, Vector2(cell.get_center().x, BAR_Y + 70), 46, Color(1, 0.8, 0.4, 0.3))
+			Art.reishi(ci, cell.position + Vector2(24, 34), 34)
 		var badge := Vector2(cell.end.x - 18, BAR_Y + 28)
 		ci.draw_circle(badge, 14, Data.magic, true, -1.0, true)
 		ci.draw_string(font, badge + Vector2(-14, 6), str(n), HORIZONTAL_ALIGNMENT_CENTER, 28, 17, Data.ink)
 		ci.draw_string(font, Vector2(cell.position.x, BAR_Y + 126), info["name"], HORIZONTAL_ALIGNMENT_CENTER, cell.size.x, 15,
-			Data.parchment)
+			Color("ffd890") if Data.is_everlasting(id) else Data.parchment)
 	if lay["paged"]:
 		for side in [0, 1]:
 			var r := Rect2(6 if side == 0 else 666, BAR_Y + 40, 48, 70)

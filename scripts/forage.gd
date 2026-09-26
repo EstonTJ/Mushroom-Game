@@ -24,6 +24,8 @@ const HIDDEN_MUSHROOM_CHANCE := 0.85
 ## Upgrades: seconds the Foraging Basket adds; how long a rare mushroom
 ## shimmers before appearing (Foxfire Lantern).
 const BASKET_BONUS := 5.0
+## How long the reishi find (glow and fact banner) stays up.
+const REISHI_BANNER := 4.5
 const FOXFIRE_LEAD := 1.2
 const HIDDEN_GHOST_CHANCE := 0.25
 const ROCK_STYLES := ["boulder", "mossy", "cairn", "slab"]
@@ -49,6 +51,9 @@ var duration := DURATION
 var time_left := DURATION
 ## Rare mushrooms waiting to appear, shimmering first (Foxfire Lantern).
 var pending := []
+## Reishi found under stumps on this walk, and the find's glowing moment.
+var reishi_found := 0
+var reishi_shine := {}
 var spawn_timer := 0.0
 var items := []
 var popups := []
@@ -281,6 +286,9 @@ func _place_obstacles() -> void:
 		var style: String = (ROCK_STYLES if kind == "rock" else STUMP_STYLES).pick_random()
 		var hp := (3 if kind == "rock" else 4) - (1 if Data.upgrades.has("rock_hammer") else 0)
 		var hidden := _pick_hidden() if randf() < HIDDEN_MUSHROOM_CHANCE else "beetle"
+		# Reishi grows on the stumps of broadleaf trees: a rare find under one.
+		if kind == "stump" and Data.day >= Data.REISHI_NIGHT and randf() < Data.REISHI_STUMP_CHANCE:
+			hidden = "reishi"
 		obstacles.append({"kind": kind, "style": style, "pos": p, "hp": hp, "max": hp, "shake": 0.0, "hidden": hidden,
 			"peek": hidden != "beetle" and randf() < 0.5, "seed": randf() * 10.0, "gone": false})
 
@@ -321,6 +329,10 @@ func _process(delta: float) -> void:
 	for p in popups:
 		p["t"] += delta
 	popups = popups.filter(func(p): return p["t"] < 1.0)
+	if not reishi_shine.is_empty():
+		reishi_shine["t"] += delta
+		if reishi_shine["t"] > REISHI_BANNER:
+			reishi_shine = {}
 
 	var still_flying := []
 	for f in flyers:
@@ -442,8 +454,29 @@ func _paint_foxfire(ci: CanvasItem) -> void:
 			Art.sparkle(ci, o["pos"] + Vector2(-30, -30), 7.0, Art.fade(fox, 1.0))
 
 
+## A found reishi floats up from its stump in a warm glow, and a banner
+## shares the real fact about it.
+func _paint_reishi_find(ci: CanvasItem) -> void:
+	var k: float = reishi_shine["t"]
+	var fade := clampf(REISHI_BANNER - k, 0.0, 1.0)
+	var rise := minf(k, 1.2)
+	var at: Vector2 = reishi_shine["pos"] + Vector2(0, -30 - rise * 60.0)
+	Art.glow(ci, at, 90, Color(1, 0.8, 0.4, 0.5 * fade))
+	Art.reishi(ci, at + Vector2(0, 20), 80, fade)
+	var font := ThemeDB.fallback_font
+	var box := Rect2(30, 150, 660, 110)
+	ci.draw_rect(box, Color(0.12, 0.08, 0.06, 0.85 * fade))
+	ci.draw_rect(box, Color(1, 0.85, 0.55, 0.8 * fade), false, 2.0)
+	ci.draw_string(font, box.position + Vector2(0, 34), "You found a reishi!", HORIZONTAL_ALIGNMENT_CENTER, box.size.x, 26,
+		Color(1, 0.86, 0.56, fade))
+	ci.draw_multiline_string(font, box.position + Vector2(20, 62), Data.REISHI_FACT, HORIZONTAL_ALIGNMENT_CENTER, box.size.x - 40, 17, 2,
+		Color(1, 0.97, 0.9, fade))
+
+
 ## Rare for the Foxfire Lantern: the ghost fungus and the least common kinds.
 static func is_rare(id: String) -> bool:
+	if id == "reishi":
+		return true
 	var w := float(Data.ingredients[id]["weight"])
 	return w <= 1.5
 
@@ -473,7 +506,15 @@ func _hit_obstacle(o: Dictionary) -> void:
 	for i in 6:
 		_emit(o["pos"] + Vector2(randf_range(-20, 20), 0), Vector2(randf_range(-30, 30), randf_range(-40, -10)), 0.8, 14.0,
 			Color(0.55, 0.45, 0.3, 0.45), "dust")
-	if o["hidden"] == "beetle":
+	if o["hidden"] == "reishi":
+		Data.reishi += 1
+		reishi_found += 1
+		for i in 24:
+			_emit(o["pos"] + Vector2(randf_range(-20, 20), randf_range(-30, 0)), Vector2(randf_range(-160, 160), randf_range(-220, -60)),
+				0.9, randf_range(3.0, 6.0), Color("ffd890"), "clod")
+		popups.append({"text": "Reishi! The mushroom of immortality", "pos": o["pos"], "t": 0.0, "color": Color("ffd890")})
+		reishi_shine = {"pos": o["pos"], "t": 0.0}
+	elif o["hidden"] == "beetle":
 		_emit(o["pos"], Vector2.from_angle(randf_range(-PI, 0)) * 90.0, 2.0, 1.0, Color("2a2440"), "beetle")
 		popups.append({"text": "Just a beetle!", "pos": o["pos"], "t": 0.0, "color": Color.WHITE})
 	else:
@@ -823,7 +864,9 @@ func _paint_obstacle(ci: CanvasItem, o: Dictionary) -> void:
 	var pos: Vector2 = o["pos"] + Vector2(sin(t * 70.0) * o["shake"] * 14.0, 0)
 	var damage: int = o["max"] - o["hp"]
 	var sd: float = o["seed"]
-	if o["peek"]:
+	if o["peek"] and o["hidden"] == "reishi":
+		Art.reishi(ci, pos + Vector2(40, 22), 34)
+	elif o["peek"]:
 		Art.ingredient(ci, o["hidden"], pos + Vector2(40, 20), 30)
 	match str(o.get("style", "boulder" if o["kind"] == "rock" else "stump")):
 		"boulder":
@@ -1070,6 +1113,8 @@ func _paint_canopy(ci: CanvasItem) -> void:
 
 
 func _paint_ui(ci: CanvasItem) -> void:
+	if not reishi_shine.is_empty():
+		_paint_reishi_find(ci)
 	var rid := ci.get_canvas_item()
 	var font := ThemeDB.fallback_font
 
