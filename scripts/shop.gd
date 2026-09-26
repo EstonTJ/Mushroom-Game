@@ -205,8 +205,7 @@ func _draw_item(font: Font, rid: RID, i: int, item: String) -> void:
 	elif item == "truffle_pig":
 		Art.pig(self, icon + Vector2(0, 16), 110, 1.0, t, fmod(t, 2.0) < 0.5)
 	elif item == "golden_snout":
-		Art.glow(self, icon + Vector2(40, 10), 50, Color(1.0, 0.85, 0.3, 0.5))
-		Art.pig(self, icon + Vector2(0, 16), 110, 1.0, t * 1.5, fmod(t, 1.2) < 0.4, true)
+		_draw_golden_snout(icon)
 	elif item == "bellows":
 		_draw_bellows(icon)
 	elif item == "everburning_coals":
@@ -241,6 +240,47 @@ func _draw_item(font: Font, rid: RID, i: int, item: String) -> void:
 		buy_box.draw(rid, b)
 		Art.coin(self, b.position + Vector2(34, 29), 30)
 		draw_string(font, b.position + Vector2(56, 39), "%d  Buy" % int(info["price"]), HORIZONTAL_ALIGNMENT_LEFT, -1, 24, Color.WHITE)
+
+
+## A pig's face, close up, with a gleaming solid-gold snout and nose-ring.
+func _draw_golden_snout(at: Vector2) -> void:
+	var pink := Color("f2a8b8")
+	var dark := Color("c87890")
+	var ink := Art.fade(Art.INK, 0.7)
+	var gold := Color("f2c040")
+	var sniff := sin(t * 5.0) * 2.0 if fmod(t, 2.4) < 0.8 else 0.0
+	Art.shadow(self, at + Vector2(0, 54), 56, 10)
+	Art.glow(self, at + Vector2(0, 14), 95, Color(1.0, 0.82, 0.3, 0.35 + 0.1 * sin(t * 2.0)))
+	# Ears, head, cheeks and eyes.
+	for e in [-1.0, 1.0]:
+		var ear := PackedVector2Array([at + Vector2(e * 22, -38), at + Vector2(e * 58, -70), at + Vector2(e * 52, -24)])
+		draw_colored_polygon(ear, dark)
+		draw_colored_polygon(PackedVector2Array([at + Vector2(e * 28, -38), at + Vector2(e * 52, -60), at + Vector2(e * 48, -30)]), pink)
+	draw_circle(at, 56, pink)
+	draw_arc(at, 56, 0, TAU, 40, ink, 2.5, true)
+	for e in [-1.0, 1.0]:
+		draw_circle(at + Vector2(e * 36, 16), 10, Color(1.0, 0.6, 0.7, 0.45))
+		draw_circle(at + Vector2(e * 20, -16), 6, Color("2a1e1e"))
+		draw_circle(at + Vector2(e * 20 - 2, -18), 2, Color.WHITE)
+	# The golden snout: rim, face, two nostrils and a moving shine.
+	var snout := at + Vector2(0, 18 + sniff)
+	draw_colored_polygon(Art.ellipse(snout + Vector2(0, 3), 32, 23, 24), Color("a8781c"))
+	draw_colored_polygon(Art.ellipse(snout, 31, 21, 24), gold)
+	draw_colored_polygon(Art.ellipse(snout + Vector2(-6, -7), 20, 9, 18), Color("ffe48a"))
+	for e in [-1.0, 1.0]:
+		draw_colored_polygon(Art.ellipse(snout + Vector2(e * 11, 3), 6, 8, 12), Color("6a4410"))
+	var sweep := fmod(t * 0.7, 1.6) - 0.3
+	if sweep >= 0.0 and sweep <= 1.0:
+		var x := lerpf(-26.0, 26.0, sweep)
+		draw_line(snout + Vector2(x - 5, -14), snout + Vector2(x + 5, 12), Color(1, 1, 1, 0.7), 4.0, true)
+	Art.outline(self, Art.ellipse(snout, 31, 21, 24), Art.fade(Color("6a4410"), 0.8), 2.0)
+	# Nose-ring, and sparkles.
+	draw_arc(snout + Vector2(0, 24), 9, 0.0, TAU, 20, gold, 4.0, true)
+	draw_arc(snout + Vector2(0, 24), 9, PI * 1.1, PI * 1.6, 8, Color("fff3c0"), 2.0, true)
+	for k in 3:
+		var ph := fmod(t * 1.3 + k * 0.37, 1.0)
+		if ph < 0.35:
+			Art.sparkle(self, at + [Vector2(40, -8), Vector2(-44, 40), Vector2(30, 48)][k], sin(ph / 0.35 * PI) * 11.0, Color(1, 0.95, 0.7))
 
 
 ## Leather bellows puffing air, squeezing in and out.

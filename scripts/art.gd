@@ -1200,8 +1200,9 @@ static func pig(ci: CanvasItem, pos: Vector2, s: float, face: float = 1.0, t: fl
 			head + Vector2(e * s * 0.02 + face * s * 0.06, -s * 0.22)])
 		ci.draw_colored_polygon(ear, dark)
 	var snout := head + Vector2(face * s * 0.2, s * 0.04)
-	ci.draw_colored_polygon(ellipse(snout, s * 0.1, s * 0.08, 14), Color("e88aa0"))
+	ci.draw_colored_polygon(ellipse(snout, s * 0.1, s * 0.08, 14), Color("f2c040") if golden else Color("e88aa0"))
 	if golden:
+		ci.draw_colored_polygon(ellipse(snout + Vector2(-s * 0.02, -s * 0.03), s * 0.06, s * 0.025, 10), Color("ffe48a"))
 		# The Golden Snout: a gold ring through the nose, glinting.
 		ci.draw_arc(snout + Vector2(0, s * 0.07), s * 0.05, 0.0, TAU, 14, Color("f2c040"), maxf(1.5, s * 0.03), true)
 		if fmod(t, 1.6) < 0.25:

@@ -5,7 +5,7 @@ extends Node
 
 ## Shown on the title screen and in the menu, so players can tell whether
 ## their browser has the latest update. Bump it with each release.
-const VERSION := "0.23"
+const VERSION := "0.24"
 const HUT_HP := 5
 const NIGHTS := 40
 ## When mushrooms unlock, in ingredient_order: three on night 1, one more on
@@ -260,7 +260,7 @@ var shop_items := {
 	"foxfire_lantern": {"name": "Foxfire Lantern", "price": 100, "kind": "Forest gear",
 		"desc": "Foxfire is the old name for the glow of fungi in rotting wood. Rare mushrooms shimmer green a moment before they appear, and so do rocks and stumps hiding one."},
 	"golden_snout": {"name": "Golden Snout", "price": 65, "kind": "Forest helper", "requires": "truffle_pig",
-		"desc": "A golden nose-ring for your Truffle Pig. It trots faster and celebrates for less time between finds."},
+		"desc": "A gleaming gold snout (and nose-ring) for your Truffle Pig. It sniffs faster, trots faster and celebrates for less time between finds."},
 	"truffle_pig": {"name": "Truffle Pig", "price": 75, "kind": "Forest helper",
 		"desc": "A keen-nosed pig joins your forest walks. It sniffs out the nearest mushroom and gathers it for you, then pauses to celebrate. Rocks and stumps are still up to you."},
 }
